@@ -100,22 +100,25 @@ DB 접근이 막힌 환경이면 화면 기반 cua 백그라운드 캡처(trycua
 
 # 윈도우 카톡 읽기 (Tier-2)
 
-윈도우 카톡(v26.x)은 Mac과 완전히 다르다. 방마다 AES-256-CBC로 암호화한 `chatLogs_{chatId}.edb`로 저장하고, **키는 파일별·페이지별 IV는 비공개**라 오프라인 파일 복호화는 막혀 있다. 대신 **카톡이 실행 중이면 복호화된 SQLite가 프로세스 메모리에 있으므로, 메모리를 덤프해 직접 파싱**한다. 키가 필요 없다. (원리·연구기록: `reference/how-it-works-windows.md`)
+윈도우 카톡(v26.x)은 Mac과 완전히 다르다. 방마다 AES-256-CBC로 암호화한 `chatLogs_{chatId}.edb`로 저장하고, **키는 파일별·페이지별 IV는 비공개**라 오프라인 파일 복호화는 막혀 있다. 대신 **카톡이 실행 중이면 복호화된 SQLite가 프로세스 메모리에 있으므로, 메모리를 덤프해 직접 파싱**한다. 키가 필요 없다. 덤프는 그 순간 스냅샷이라 매번 결과가 달라지므로, **`sync` 할 때마다 누적 저장소(`store.db`)에 병합**해 커버리지를 시간에 따라 쌓는다. (원리·연구기록: `reference/how-it-works-windows.md`)
 
 ## 범위·전제
 
 - **읽기 전용 · 본인 기기의 본인 계정만.** 본인 PC에 로그인된 본인 카톡.
 - 메모리 덤프는 본인 프로세스를 **읽기만** 한다(수정·네트워크·LOCO 없음).
 - **전제**: 카톡 실행 중 + 읽고 싶은 대화방을 열어 본 적이 있어야 메모리에 올라온다.
-- procdump64.exe 필요(설치형 아님). 없으면 `https://download.sysinternals.com/files/Procdump.zip` 받아 `config.procdump_path` 지정 또는 PATH에 둔다.
-- **WSL·네이티브 윈도우 양쪽 동작**: 스크립트가 `/mnt/c` 유무로 환경을 자동 감지해 경로를 처리한다(WSL=`/mnt/c/...`, 네이티브=`C:\...`). 네이티브에선 `python3` 대신 `python` 일 수 있음. 의존성은 표준 라이브러리뿐.
+- procdump64.exe 필요(설치형 아님). **`sync` 첫 실행 시 Sysinternals에서 자동 다운로드**되어 `~/.config/kakao-read/`에 캐시된다(클론 사용자 수동 설치 불필요). 자동이 막히면 `https://download.sysinternals.com/files/Procdump.zip` 받아 `config.procdump_path` 지정 또는 PATH에.
+- **클론 후 첫 실행**: `python kakao_win.py doctor` 로 환경·의존성·데이터 상태를 한 번에 점검(파이썬·카톡 실행 여부·procdump·누적 저장소).
+- **WSL·네이티브 윈도우 양쪽 동작**: 스크립트가 `/mnt/c` 유무로 환경을 자동 감지해 경로를 처리한다(WSL=`/mnt/c/...`, 네이티브=`C:\...`). 네이티브에선 `python3` 대신 `python` 일 수 있음. 의존성은 표준 라이브러리뿐(다운로드·DB·압축해제 모두 stdlib).
 
 ## 사용법
 
 실행 전 워크스페이스 루트에서 `cd .claude/skills/kakao-read/scripts/win` 후 아래 (표준 라이브러리만, 네이티브는 `python`).
 
 ```bash
-python3 kakao_win.py dump            # 실행 중 KakaoTalk 메모리 덤프 (경로 config 저장)
+python3 kakao_win.py doctor          # 자가진단: 환경·procdump·카톡 실행·저장소 상태 (클론 후 첫 실행)
+python3 kakao_win.py sync            # KakaoTalk 메모리 덤프 → 누적 저장소에 병합 (=dump, procdump 자동 다운로드)
+python3 kakao_win.py stats           # 누적 저장소 현황 (총 메시지·사용자·방·기간)
 python3 kakao_win.py recent 20       # 최근 메시지 20개 (시각|발신자|내용)
 python3 kakao_win.py rooms           # 방 목록 (참여자 이름으로 라벨)
 python3 kakao_win.py read <번호|이름> 40   # 특정 방 대화 (시간순)
@@ -123,13 +126,15 @@ python3 kakao_win.py search "키워드" 30
 python3 kakao_win.py users           # id→이름 매핑 수 확인 (디버그)
 ```
 
-표준 워크플로: `dump` 1회 → `rooms`로 방 확인 → `read <번호>`로 그 방 대화. 새 대화를 보려면 카톡에서 그 방을 연 뒤 다시 `dump`.
+표준 워크플로: `sync` 1회 → `rooms`로 방 확인 → `read <번호>`로 그 방 대화. 새 대화를 보려면 카톡에서 그 방을 연 뒤 다시 `sync`.
+
+**누적 저장(핵심)**: 메모리 덤프는 '지금 카톡이 RAM에 띄워둔 방'만 가진 **스냅샷**이라, 덤프마다 어떤 방은 사라지고 어떤 방은 새로 잡힌다. 그래서 `sync` 할 때마다 결과를 `~/.config/kakao-read/store.db`에 **병합(union)** 한다. 읽기 명령(`recent`/`rooms`/`read`/`search`)은 이 누적 DB에서 조회하므로 **한 번 잡힌 방·메시지는 다시 사라지지 않고**, 평소 카톡을 쓰며 가끔 `sync`만 돌리면 활성 대화가 점점 다 쌓인다. (단, **한 번도 안 열어 본 방**은 메모리에 올라온 적이 없어 여전히 없다 → 카톡에서 그 방을 열고 스크롤한 뒤 `sync`.)
 
 **방 구분 원리**: `chatLogs`에 chatId는 없지만 `prevLogId`(이전 메시지 id)가 있어, logId↔prevLogId 사슬의 연결요소 = 방. 참여자(본인 제외 authorId)→이름으로 방 라벨을 만든다(1:1은 상대 이름, 그룹은 "A 외 N명").
 
 ## 한계 (Mac과 다른 점 — 반드시 인지)
 
-- **메모리에 올라온 것만** 보인다. 최근/열어 본 방 위주, 전체 history 아님.
+- **한 번이라도 메모리에 올라온 것만** 쌓인다. `sync`로 누적되므로 과거에 본 방은 사라지지 않지만, 카톡에서 **한 번도 열어 본 적 없는 방**은 여전히 없다 → 열고 스크롤 후 `sync`.
 - **방 라벨은 참여자 기반**(실제 방 이름 아님). 같은 사슬이 메모리에서 끊기면 한 방이 여러 조각으로 보일 수 있음(참여자 같으면 병합함).
 - **오픈챗/비친구 발신자**는 이름 대신 숫자 ID로 표시(친구는 이름 매핑됨).
 - **본인 메시지** "나" 표시는 write_on_pc로 자동 추정(불확실 시 `config.win_own_id`에 본인 userId 지정).
@@ -137,7 +142,9 @@ python3 kakao_win.py users           # id→이름 매핑 수 확인 (디버그)
 
 ## 자주 막히는 곳
 
-- "덤프 없음" → 먼저 `dump`. 카톡 실행 + 방 하나 열어두기.
+- "저장된 데이터 없음" → 먼저 `sync`. 카톡 실행 + 방 하나 열어두기.
 - "KakaoTalk 프로세스를 못 찾음" → 카톡이 안 떠 있음.
 - procdump 권한 오류 → 프롬프트에서 `!` 로 직접 실행하거나 관리자 권한 필요할 수 있음.
-- 최근 메시지가 적다 → 그 방을 카톡에서 열어 스크롤한 뒤 다시 `dump`(페이지 캐시에 올라옴).
+- 특정 방이 안 보인다 / 최근 메시지가 적다 → 그 방을 카톡에서 열어 스크롤한 뒤 다시 `sync`(페이지 캐시에 올라온 뒤 누적 DB에 병합됨).
+- **sync 해도 신규 +0이 반복 / 덤프 크기가 매번 똑같다** → procdump가 기존 파일이 있으면 `kt_kakao-1.dmp`처럼 번호를 붙여 새로 만드는데, 옛 `kt_kakao.dmp`만 읽으면 갱신이 안 됨. (2026-06 수정: `cmd_dump`가 덤프 전에 기존 `kt_kakao*.dmp`를 모두 지워 항상 새 덤프를 보장.)
+- **인코딩**: 스크립트가 stdout을 UTF-8로 자동 전환하므로 콘솔이 cp949여도 한글 정상.

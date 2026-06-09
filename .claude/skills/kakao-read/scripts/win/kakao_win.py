@@ -8,12 +8,20 @@ kakao_win.py — 윈도우 카카오톡 읽기 (Tier-2: 메모리 덤프 직접 
 덤프해 SQLite 리프 페이지를 직접 파싱하면 키 없이 메시지를 읽을 수 있다.
 
 서브커맨드:
-  dump                 실행 중인 KakaoTalk 메모리를 procdump로 덤프 (경로 config 저장)
+  doctor (=setup)      환경·의존성·데이터 상태 자가진단 (클론 후 첫 실행 권장)
+  sync (=dump)         KakaoTalk 메모리를 덤프 → 누적 저장소(store.db)에 병합
+                       (procdump 없으면 Sysinternals에서 자동 다운로드)
+  stats                누적 저장소 현황(총 메시지·사용자·방·기간)
   recent [N]           최근 메시지 N개 (시각 | 발신자 | 내용)
   rooms                방 목록 (prevLogId 사슬로 그룹핑, 참여자 이름 라벨)
   read <번호|이름> [N]  특정 방의 대화 N개 (시간순)
   search "kw" [N]      키워드 검색
   users                추출된 사용자(id→이름) 수 확인
+
+누적 저장(중요): 메모리 덤프는 '지금 띄워진 방'만 가진 스냅샷이라 덤프마다
+사라졌다 생긴다. 그래서 sync 할 때마다 결과를 ~/.config/kakao-read/store.db 에
+병합(union)한다. 읽기 명령(recent/rooms/read/search)은 이 누적 DB에서 조회하므로,
+한 번 잡힌 방은 안 사라지고 평소 카톡을 쓰며 sync만 돌리면 활성 대화가 점점 쌓인다.
 
 방 구분 원리: chatLogs에 chatId는 없지만 prevLogId(이전 메시지 id)가 있어,
 logId↔prevLogId 사슬의 연결요소 = 방. 참여자(non-me authorId)→이름으로 방 라벨.
@@ -21,11 +29,17 @@ logId↔prevLogId 사슬의 연결요소 = 방. 참여자(non-me authorId)→이
 전제: 카톡 실행 중 + 대화방 사용 이력. procdump64.exe(설치형 아님) 경로 필요.
 출력 포맷은 Mac kakao-read와 최대한 맞춘다(파이프 구분).
 """
-import sys, os, re, json, struct, subprocess, datetime, glob
+import sys, os, re, json, struct, subprocess, datetime, glob, sqlite3
 from pathlib import Path
+
+# 콘솔 한글 깨짐 방지(cp949 환경) — 가능하면 stdout/stderr를 UTF-8로
+for _s in (sys.stdout, sys.stderr):
+    try: _s.reconfigure(encoding="utf-8")
+    except Exception: pass
 
 HOME = Path.home()
 CONFIG = HOME / ".config/kakao-read/config.json"
+STORE = HOME / ".config/kakao-read/store.db"   # 누적 저장소(덤프마다 병합)
 PAGE = 4096
 
 # 환경 감지: WSL이면 /mnt/c 로 윈도우 디스크 접근, 네이티브 윈도우면 C:\ 직접
@@ -55,6 +69,75 @@ def _cfg():
 def _save_cfg(d):
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     CONFIG.write_text(json.dumps(d, ensure_ascii=False, indent=2))
+
+
+# ---------------- 누적 저장소(store) ----------------
+# 메모리 덤프는 '지금 띄워진 방'만 가진 스냅샷이라, 덤프마다 사라지고 다시 생긴다.
+# 매 덤프를 영구 DB에 병합(union)하면, 한 번 잡힌 방·메시지는 안 사라지고
+# 평소 카톡을 쓰며 sync만 돌리면 활성 대화가 점점 다 쌓인다.
+def _store():
+    STORE.parent.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(str(STORE))
+    c.executescript("""
+        CREATE TABLE IF NOT EXISTS messages(
+            logId INTEGER PRIMARY KEY, sendAt INTEGER, authorId INTEGER,
+            type INTEGER, message TEXT, write_on_pc INTEGER, prevLogId INTEGER);
+        CREATE TABLE IF NOT EXISTS users(userId INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
+        CREATE INDEX IF NOT EXISTS idx_msg_sendAt ON messages(sendAt);
+    """)
+    return c
+
+def merge_into_store(msgs, users, own):
+    """덤프 1회 스캔 결과를 누적 DB에 병합. 반환: (신규 메시지 수, 신규 사용자 수)."""
+    c = _store()
+    before_m = c.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    before_u = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    c.executemany(
+        "INSERT OR IGNORE INTO messages VALUES(?,?,?,?,?,?,?)",
+        [(lid, r[0], r[1], r[2], r[3], r[4], r[5]) for lid, r in msgs.items()])
+    # 사용자명: 먼저 들어온 실명 유지(scan이 이미 dump 내 최선 이름을 고름)
+    c.executemany("INSERT OR IGNORE INTO users VALUES(?,?)", list(users.items()))
+    if own:
+        c.execute("INSERT OR REPLACE INTO meta VALUES('own_id', ?)", (str(own),))
+    c.commit()
+    after_m = c.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    after_u = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    c.close()
+    return after_m - before_m, after_u - before_u
+
+def load_store():
+    """누적 DB 전체를 scan()과 동일한 형태로 로드. 반환: (msgs, users, own)."""
+    if not STORE.exists():
+        return {}, {}, None
+    c = _store()
+    msgs = {}
+    for lid, sendAt, aid, typ, message, wpc, prev in c.execute(
+            "SELECT logId,sendAt,authorId,type,message,write_on_pc,prevLogId FROM messages"):
+        msgs[lid] = (sendAt, aid, typ, message, wpc, prev)
+    users = {uid: name for uid, name in c.execute("SELECT userId,name FROM users")}
+    row = c.execute("SELECT value FROM meta WHERE key='own_id'").fetchone()
+    c.close()
+    own = _cfg().get("win_own_id")
+    if not own and row:
+        own = int(row[0])
+    if not own and msgs:
+        from collections import Counter
+        cnt = Counter(a for (_, a, _, _, w, _p) in msgs.values() if w)
+        own = cnt.most_common(1)[0][0] if cnt else None
+    return msgs, users, own
+
+def load():
+    """읽기 명령용 데이터 소스. 누적 DB 우선, 비어 있으면 최신 덤프로 폴백(+병합)."""
+    msgs, users, own = load_store()
+    if msgs:
+        return msgs, users, own
+    p = _cfg().get("win_dump_path")
+    if p and os.path.exists(p):
+        msgs, users, own = scan(p)
+        if msgs: merge_into_store(msgs, users, own)
+        return msgs, users, own
+    sys.exit("저장된 데이터 없음. 먼저:  python kakao_win.py sync  (또는 dump)")
 
 
 # ---------------- SQLite leaf parser ----------------
@@ -234,18 +317,13 @@ def fmt_msg(sendAt, authorId, typ, message, users, own_id=None):
 
 
 # ---------------- commands ----------------
-def get_dump():
-    p = _cfg().get("win_dump_path")
-    if not p or not os.path.exists(p):
-        sys.exit("덤프 없음. 먼저:  python3 kakao_win.py dump")
-    return p
-
 def cmd_dump():
     """KakaoTalk PID 찾아 procdump로 메모리 덤프."""
-    procdump = _cfg().get("procdump_path") or shutil_which_procdump()
+    procdump = ensure_procdump()
     if not procdump:
-        sys.exit("procdump64.exe 경로를 config(procdump_path)에 지정하거나 PATH에 두세요.\n"
-                 "다운로드: https://download.sysinternals.com/files/Procdump.zip")
+        sys.exit("procdump 준비 실패(네트워크 등). 수동으로 "
+                 "https://download.sysinternals.com/files/Procdump.zip 받아 "
+                 "config(procdump_path) 지정 또는 PATH에 두세요.")
     # PID
     r = subprocess.run(["powershell.exe","-NoProfile","-Command",
         "(Get-Process KakaoTalk -ErrorAction SilentlyContinue | Select-Object -First 1).Id"],
@@ -258,22 +336,41 @@ def cmd_dump():
                           capture_output=True, text=True).stdout.strip()
     out_win = rf"C:\Users\{user}\AppData\Local\Temp\kt_kakao.dmp"   # procdump엔 항상 윈도우 경로
     out_access = to_local(out_win)                                   # 현재 환경에서 열 경로
+    # 중요: procdump는 대상 파일이 이미 있으면 kt_kakao-1.dmp 처럼 번호를 붙여
+    # 새로 만든다. 그러면 우리가 매번 옛 kt_kakao.dmp만 읽어 덤프가 갱신 안 됨.
+    # → 덤프 전에 기존 덤프(번호 포함)를 싹 지워 항상 깨끗한 kt_kakao.dmp 보장.
+    dump_dir = os.path.dirname(out_access)
+    for old in glob.glob(os.path.join(dump_dir, "kt_kakao*.dmp")):
+        try: os.remove(old)
+        except OSError: pass
     print(f"KakaoTalk PID={pid} → 덤프 중... (env={'WSL' if IS_WSL else 'native'})")
     subprocess.run([procdump, "-accepteula", "-ma", pid, out_win],
                    capture_output=True, text=True)
+    # procdump가 그래도 번호를 붙였으면 최신 kt_kakao*.dmp 를 집는다(방어적).
     if not os.path.exists(out_access):
-        sys.exit("덤프 실패. procdump 권한/경로 확인.")
+        cands = sorted(glob.glob(os.path.join(dump_dir, "kt_kakao*.dmp")),
+                       key=os.path.getmtime)
+        if cands:
+            out_access = cands[-1]
+        else:
+            sys.exit("덤프 실패. procdump 권한/경로 확인.")
     d = _cfg(); d["win_dump_path"] = out_access; _save_cfg(d)
     sz = os.path.getsize(out_access)
     print(f"덤프 완료: {out_access} ({sz:,} bytes)")
-    print("이제: python3 kakao_win.py recent 20")
+    # 덤프를 곧바로 누적 저장소에 병합 → 이 방·메시지는 다음부터 안 사라진다
+    msgs, users, own = scan(out_access)
+    new_m, new_u = merge_into_store(msgs, users, own)
+    total = _store().execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    print(f"누적 병합: 신규 메시지 +{new_m} · 신규 사용자 +{new_u} (누적 총 {total}건)")
+    print("이제: python kakao_win.py rooms  /  read <번호>")
 
 def shutil_which_procdump():
     import shutil
     for n in ("procdump64.exe","procdump.exe","procdump"):
         p = shutil.which(n)
         if p: return p
-    cands = [to_local(r"C:\Users\*\Downloads\procdump64.exe"),
+    cands = [str(CONFIG.parent / "procdump64.exe"),
+             to_local(r"C:\Users\*\Downloads\procdump64.exe"),
              to_local(r"C:\Users\*\Downloads\procdump.exe")]
     if IS_WSL:
         cands.append("/tmp/procdump/procdump64.exe")
@@ -282,8 +379,44 @@ def shutil_which_procdump():
         if g: return g[0]
     return None
 
+PROCDUMP_URL = "https://download.sysinternals.com/files/Procdump.zip"
+
+def ensure_procdump():
+    """procdump 경로 확보. config → PATH/Downloads → 없으면 sysinternals에서
+    자동 다운로드(표준 라이브러리만). 클론 사용자가 수동 설치 없이 바로 쓰게 함."""
+    p = _cfg().get("procdump_path")
+    if p and os.path.exists(p):
+        return p
+    p = shutil_which_procdump()
+    if p:
+        d = _cfg(); d["procdump_path"] = p; _save_cfg(d)
+        return p
+    # 자동 다운로드 → ~/.config/kakao-read/procdump64.exe 에 캐시
+    import urllib.request, zipfile, io
+    target = CONFIG.parent / "procdump64.exe"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        return str(target)
+    print("procdump 없음 → Sysinternals에서 자동 다운로드 중...")
+    try:
+        req = urllib.request.Request(PROCDUMP_URL, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = r.read()
+        z = zipfile.ZipFile(io.BytesIO(data))
+        pick = next((n for n in ("procdump64.exe","procdump.exe") if n in z.namelist()), None)
+        if not pick:
+            print("zip에 procdump 실행파일 없음."); return None
+        with z.open(pick) as src, open(target, "wb") as dst:
+            dst.write(src.read())
+    except Exception as e:
+        print(f"자동 다운로드 실패: {e}\n수동: {PROCDUMP_URL} 받아 config.procdump_path 지정.")
+        return None
+    d = _cfg(); d["procdump_path"] = str(target); _save_cfg(d)
+    print(f"procdump 준비 완료: {target}")
+    return str(target)
+
 def cmd_recent(n=20):
-    msgs, users, own = scan(get_dump())
+    msgs, users, own = load()
     rows = sorted(msgs.values(), key=lambda x: x[0], reverse=True)
     print(f"# 최근 메시지 (덤프 기준 · 발신자 {len(users)}명 매핑 · 본인={'나' if own else '미상'})")
     shown = 0
@@ -296,7 +429,7 @@ def cmd_recent(n=20):
         if shown >= int(n): break
 
 def cmd_search(kw, n=30):
-    msgs, users, own = scan(get_dump())
+    msgs, users, own = load()
     rows = sorted(msgs.values(), key=lambda x: x[0], reverse=True)
     print(f"# 검색: '{kw}'")
     shown = 0
@@ -308,9 +441,9 @@ def cmd_search(kw, n=30):
         if shown >= int(n): break
 
 def cmd_rooms():
-    msgs, users, own = scan(get_dump())
+    msgs, users, own = load()
     rooms = build_rooms(msgs, users, own)
-    print(f"# 방 목록 (prevLogId 사슬 기준 · {len(rooms)}개 · 메모리에 올라온 것만)")
+    print(f"# 방 목록 (prevLogId 사슬 기준 · {len(rooms)}개 · 누적 저장소 기준)")
     for i, r in enumerate(rooms):
         last = datetime.datetime.fromtimestamp(r["last"]).strftime("%m-%d %H:%M")
         # 마지막 텍스트 미리보기
@@ -319,10 +452,10 @@ def cmd_rooms():
             _, _, body = fmt_msg(sendAt, aid, typ, message, users, own)
             if body and not is_system(body): prev = body[:30]; break
         print(f"[{i}] {r['label']} | {len(r['msgs'])}건 | 최근 {last} | {prev}")
-    print("# 특정 방 읽기: python3 kakao_win.py read <번호 또는 이름> [N]")
+    print("# 특정 방 읽기: python kakao_win.py read <번호 또는 이름> [N]")
 
 def cmd_read(query, n=40):
-    msgs, users, own = scan(get_dump())
+    msgs, users, own = load()
     rooms = build_rooms(msgs, users, own)
     room = None
     if query.isdigit() and int(query) < len(rooms):
@@ -340,17 +473,60 @@ def cmd_read(query, n=40):
         print(f"{t}|{sender}|{body[:80]}")
 
 def cmd_users():
-    msgs, users, own = scan(get_dump())
+    msgs, users, own = load()
     print(f"메시지 {len(msgs)}건, 사용자 매핑 {len(users)}명, 본인 추정 id={own}")
     for uid, name in list(users.items())[:20]:
         print(f"  {uid} -> {name}")
+
+def cmd_stats():
+    """누적 저장소 현황: 총량·기간·방 수."""
+    if not STORE.exists():
+        sys.exit("누적 저장소 없음. 먼저:  python kakao_win.py sync")
+    c = _store()
+    nm = c.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    nu = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    mn, mx = c.execute("SELECT MIN(sendAt), MAX(sendAt) FROM messages").fetchone()
+    c.close()
+    f = lambda t: datetime.datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M") if t else "-"
+    msgs, users, own = load_store()
+    rooms = build_rooms(msgs, users, own) if msgs else []
+    print(f"# 누적 저장소: {STORE}")
+    print(f"메시지 {nm:,}건 · 사용자 {nu:,}명 · 방 {len(rooms)}개")
+    print(f"기간: {f(mn)} ~ {f(mx)}")
+
+def _kakao_pid():
+    r = subprocess.run(["powershell.exe","-NoProfile","-Command",
+        "(Get-Process KakaoTalk -ErrorAction SilentlyContinue | Select-Object -First 1).Id"],
+        capture_output=True, text=True)
+    pid = (r.stdout or "").strip()
+    return pid if pid.isdigit() else None
+
+def cmd_doctor():
+    """클론 사용자용 자가진단: 환경·의존성·데이터 상태를 한눈에."""
+    ok = lambda b: "✅" if b else "❌"
+    print("# kakao-read (윈도우) 자가진단")
+    print(f"{ok(True)} Python {sys.version.split()[0]} · 환경 {'WSL' if IS_WSL else 'native'}")
+    pid = _kakao_pid()
+    print(f"{ok(pid)} KakaoTalk 실행 " + (f"(PID={pid})" if pid else "→ 카톡을 켜고 읽을 방을 열어두세요"))
+    pd = _cfg().get("procdump_path") or shutil_which_procdump()
+    print(f"{ok(pd)} procdump " + (pd if pd else "→ sync 실행 시 자동 다운로드됩니다"))
+    if STORE.exists():
+        c = _store()
+        nm = c.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+        nu = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]; c.close()
+        print(f"{ok(nm)} 누적 저장소: 메시지 {nm:,} · 사용자 {nu:,}  ({STORE})")
+    else:
+        print(f"{ok(False)} 누적 저장소 없음 → 먼저 'sync' 실행")
+    print("\n다음: python kakao_win.py sync  →  rooms  →  read <번호>")
 
 
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
     cmd = sys.argv[1]; a = sys.argv[2:]
-    if cmd == "dump": cmd_dump()
+    if cmd in ("dump", "sync"): cmd_dump()
+    elif cmd in ("doctor", "setup"): cmd_doctor()
+    elif cmd == "stats": cmd_stats()
     elif cmd == "recent": cmd_recent(a[0] if a else 20)
     elif cmd == "rooms": cmd_rooms()
     elif cmd == "read":

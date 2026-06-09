@@ -47,9 +47,26 @@
 
 결론: 비용 대비 효율로 Tier-2 채택. Tier-1 재개 시 출발점은 위 도구 + Ghidra.
 
+## 누적 저장(accumulation) — 스냅샷 한계 완화 (2026-06 추가)
+
+덤프는 '그 순간 RAM에 올라온 방'만 가진 스냅샷이라, 덤프마다 어떤 방은 사라지고
+어떤 방은 새로 잡힌다(같은 시점에 본 방도 페이지 캐시 eviction으로 빠질 수 있음).
+그래서 `sync`(=dump) 할 때마다 스캔 결과를 **영구 SQLite `~/.config/kakao-read/store.db`
+에 병합(union)** 한다.
+
+- 스키마: `messages(logId PK, sendAt, authorId, type, message, write_on_pc, prevLogId)`,
+  `users(userId PK, name)`, `meta(key,value)`. logId는 카톡 전역 유일 → `INSERT OR IGNORE`.
+- 읽기 명령(recent/rooms/read/search/users)은 단일 덤프가 아니라 **누적 DB 전체**를 읽는다
+  (`load()` → `load_store()`). 덕분에 "어제 본 방이 오늘 덤프엔 없어 사라짐"이 해결된다.
+- 한계는 남는다: **한 번도 열어 본 적 없는 방**은 메모리에 올라온 적이 없어 누적도 안 됨.
+  → 그 방을 카톡에서 열고 스크롤한 뒤 `sync`.
+- 본인 추정 own_id는 meta에 캐시(또는 `config.win_own_id` 우선).
+- stdout을 UTF-8로 자동 reconfigure → cp949 콘솔에서도 한글 정상.
+
 ## 한계 (Tier-2)
 
-- **메모리에 올라온 것만 보임**: 최근 사용/열어 본 방 위주. 전체 history 아님.
+- **한 번이라도 메모리에 올라온 것만 누적됨**: 누적 저장으로 과거에 본 방은 유지되나,
+  열어 본 적 없는 방은 여전히 없다. 전체 history 아님.
 - **방별 그룹핑은 prevLogId 사슬로 해결**: `chatLogs`에 chatId는 없지만 `prevLogId`
   (이전 메시지 id)가 있어 logId↔prevLogId 연결요소 = 방. 검증: 265건 중 254건이
   사슬 연결 → 11개 방. 다만 (a) 실제 방 이름이 아니라 참여자 기반 라벨,
