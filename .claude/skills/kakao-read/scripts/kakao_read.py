@@ -321,17 +321,17 @@ def cmd_search(kw, n=30):
 # ---- 카톡 체크(on-demand 메뉴형 수집) -------------------------------------
 # 1:1 판별자: directChatMemberUserId != 0  (검증 2026-06-02: 모든 방이 NOT NULL,
 #   단톡 type1·오픈챗 type4·채널 type5는 값이 0. != 0 이면 친구 type0 + 비즈니스 type2 등 1:1만 남음)
-# 소규모 그룹 포함(2026-06-09): B2B 인바운드가 담당자 2~3명+이림 그룹방으로 들어오는 경우
-#   (예: CJ 김숙진 상무+최영진 3인방)가 1:1 필터에서 새던 문제. type 1 그룹방 중 인원이
-#   GROUP_MAX 이하인 소규모만 추가로 포함 → 캠프 단톡(수십~수백명)·오픈챗(type4)·채널(type5)은 계속 제외.
+# 소규모 그룹 포함(2026-06-09): B2B 인바운드가 담당자 2~3명+본인 그룹방으로 들어오는 경우
+#   (예: 거래처 담당자 2명+본인 3인방)가 1:1 필터에서 새던 문제. type 1 그룹방 중 인원이
+#   GROUP_MAX 이하인 소규모만 추가로 포함 → 대형 단톡(수십~수백명)·오픈챗(type4)·채널(type5)은 계속 제외.
 DIRECT_FILTER = "r.directChatMemberUserId != 0"
-DEFAULT_GROUP_MAX = 5              # 이림 포함 5명 이하 그룹방까지 체크에 포함 (config check_group_max_members 로 조정)
+DEFAULT_GROUP_MAX = 5              # 본인 포함 5명 이하 그룹방까지 체크에 포함 (config check_group_max_members 로 조정)
 DEFAULT_FIRST_WINDOW = 2 * 86400   # 첫 실행(마지막 체크 없음) 시 최근 2일만
 
 
 def cmd_check(*args):
     """'지난번 체크 이후' 새 활동이 있는 1:1 대화방 목록 (이름·시각·마지막메시지 미리보기).
-    메뉴형 수집: 후보를 차려주고 이림이 골라 since 로 읽는다. 끝나면 mark 로 창 전진."""
+    메뉴형 수집: 후보를 차려주고 사용자가 골라 since 로 읽는다. 끝나면 mark 로 창 전진."""
     last = load_last_check()
     if last:
         cutoff = last
