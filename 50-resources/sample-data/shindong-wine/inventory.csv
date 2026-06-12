@@ -1,0 +1,42 @@
+﻿sku,brand,product,type,vintage,stock_qty,receive_date,avg_daily_out_30d,days_of_supply
+BOL-SC-750,볼링저,Special Cuvée Brut,스파클링,2023,452,2026-02-13,3.73,121.2
+BOL-RO-750,볼링저,Rosé Brut,스파클링,2021,34,2026-02-04,1.57,21.7
+BOL-GA-750,볼링저,La Grande Année,스파클링,2022,59,2025-12-22,1.2,49.2
+BOL-GAR-750,볼링저,La Grande Année Rosé,스파클링,2019,21,2024-04-22,1.97,10.7
+TOR-GC-750,토레스,Gran Coronas Reserva,레드,2022,630,2026-04-29,13.97,45.1
+TOR-CE-750,토레스,Celeste Crianza,레드,2022,433,2026-03-18,9.7,44.6
+TOR-MP-750,토레스,Mas La Plana,레드,2022,80,2026-02-04,1.8,44.4
+TOR-SA-750,토레스,Salmos,레드,2018,591,2024-07-02,4.93,119.9
+CAS-CC-750,카스텔라레,Chianti Classico,레드,2021,41,2026-01-30,9.4,4.4
+CAS-RI-750,카스텔라레,Chianti Classico Riserva,레드,2021,94,2026-04-15,4.83,19.5
+CAS-SN-750,카스텔라레,I Sodi di San Niccolò,레드,2019,349,2024-07-29,2.9,120.3
+MON-NC-750,로버트몬다비,Napa Valley Cabernet,레드,2021,96,2025-12-15,4.6,20.9
+MON-FB-750,로버트몬다비,Napa Valley Fumé Blanc,화이트,2021,750,2026-01-15,37.47,20.0
+MON-TK-750,로버트몬다비,To Kalon Reserve Cabernet,레드,2018,136,2024-09-29,2.93,46.4
+CAL-CS-750,칼리테라,Reserva Cabernet,레드,2022,334,2026-05-03,16.77,19.9
+CAL-CR-750,칼리테라,Reserva Carmenere,레드,2021,714,2026-03-26,15.93,44.8
+CAL-TC-750,칼리테라,Tributo Gran Reserva Carmenere,레드,2023,360,2025-11-23,18.0,20.0
+CAL-TS-750,칼리테라,Tributo Gran Reserva Sauvignon Blanc,화이트,2021,110,2026-04-14,12.27,9.0
+VIL-SB-750,빌라마리아,Private Bin Sauvignon Blanc,화이트,2022,3073,2026-03-03,68.23,45.0
+VIL-PG-750,빌라마리아,Private Bin Pinot Gris,화이트,2022,179,2026-03-01,9.07,19.7
+VIL-CS-750,빌라마리아,Cellar Selection Sauvignon Blanc,화이트,2021,200,2026-03-27,9.93,20.1
+VIL-PN-750,빌라마리아,Earth Garden Pinot Noir,레드,2021,402,2025-12-15,8.83,45.5
+BUR-ER-750,뷔르클린볼프,Estate Riesling Trocken,화이트,2022,842,2025-12-31,18.63,45.2
+BUR-WV-750,뷔르클린볼프,Wachenheim Village Riesling,화이트,2023,188,2026-01-28,4.1,45.9
+BUR-GE-750,뷔르클린볼프,Gerumpel P.C. Riesling,화이트,2023,15,2025-12-17,1.47,10.2
+CLK-RD-750,샤토클라크,Château Clarke Rouge,레드,2017,89,2024-11-01,4.43,20.1
+CLK-MB-750,샤토클라크,Le Merle Blanc,화이트,2021,574,2026-04-05,12.67,45.3
+JOL-AT-750,파스칼졸리베,Attitude Sauvignon Blanc,화이트,2019,1335,2024-06-16,29.6,45.1
+JOL-SA-750,파스칼졸리베,Sancerre Blanc,화이트,2021,240,2025-11-29,5.37,44.7
+JOL-PF-750,파스칼졸리베,Pouilly-Fumé,화이트,2022,31,2025-12-20,3.43,9.0
+CHA-PE-750,라샤블리지엔,Chablis La Pierrelée,화이트,2023,210,2026-02-08,10.43,20.1
+CHA-PC-750,라샤블리지엔,Chablis 1er Cru Fourchaume,화이트,2018,946,2025-02-04,20.97,45.1
+CHA-PT-750,라샤블리지엔,Petit Chablis,화이트,2023,37,2026-01-24,9.33,4.0
+CHA-GC-750,라샤블리지엔,Chablis Grand Cru,화이트,2023,29,2025-11-20,1.6,18.1
+LUN-RU-750,룬가로티,Rubesco Rosso di Torgiano,레드,2021,1082,2026-01-06,9.0,120.2
+LUN-RM-750,룬가로티,Rubesco Riserva Vigna Monticchio,레드,2023,183,2026-04-19,1.5,122.0
+LUN-SG-750,룬가로티,San Giorgio,레드,2017,110,2025-02-27,5.37,20.5
+TOK-A5-250,로얄토카이,Aszú 5 Puttonyos Blue Label,스위트,2023,1290,2026-01-18,28.6,45.1
+TOK-A6-500,로얄토카이,Aszú 6 Puttonyos,스위트,2017,661,2024-10-06,14.63,45.2
+SPL-SP-750,산펠레그리노,Sparkling 750ml,탄산수,NV,1373,2026-04-10,68.8,20.0
+APN-ST-750,아쿠아파나,Still 750ml,생수,NV,9597,2026-05-21,80.0,120.0
