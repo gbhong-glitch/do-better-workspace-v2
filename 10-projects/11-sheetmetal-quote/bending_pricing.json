@@ -1,0 +1,50 @@
+{
+  "_comment": "심플라인 절곡 공정 단가표 — 사진 기준. tier=길이구간별, flat=개당단일, per_length=길이비례",
+  "_unit": "KRW",
+  "bending_processes": {
+    "bending": {
+      "label_ko": "절곡",
+      "label_en": "bending",
+      "model": "tier",
+      "tiers": [
+        { "max_mm": 500, "price": 150.0 },
+        { "max_mm": 1000, "price": 250.0 },
+        { "max_mm": null, "price": 350.0 }
+      ]
+    },
+    "hemming": {
+      "label_ko": "헤밍",
+      "label_en": "hemming",
+      "model": "tier",
+      "tiers": [
+        { "max_mm": 500, "price": 200.0 },
+        { "max_mm": 1000, "price": 300.0 },
+        { "max_mm": null, "price": 500.0 }
+      ]
+    },
+    "v_cutting": {
+      "label_ko": "V컷팅",
+      "label_en": "v-cutting",
+      "model": "per_length",
+      "per_mm": 0.5,
+      "_note": "100mm당 50원 = mm당 0.5원"
+    },
+    "forming": {
+      "label_ko": "포밍",
+      "label_en": "forming",
+      "model": "flat",
+      "price": 200.0
+    },
+    "beading": {
+      "label_ko": "비딩",
+      "label_en": "beading",
+      "model": "flat",
+      "price": 100.0
+    }
+  },
+  "_layer_map_TODO": {
+    "_comment": "실제 DXF 레이어명을 여기에 매핑. DXF 확인 후 채울 것.",
+    "예시_굽힘선아래로": "bending",
+    "예시_시밍레이어명": "seaming"
+  }
+}

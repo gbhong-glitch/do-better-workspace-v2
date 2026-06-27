@@ -4,9 +4,9 @@
 > PRD 전문은 `PRD.md` 참조.
 
 ## 현재 상태
-- **단계**: STEP 1~2 완료 — PRD + DXF 파서 PoC + 견적 엔진 구조 (2026-06-27)
-- **다음 할 일**: 단가표 실제값 입력 → DB 선택 → Next.js 앱 스캐폴딩
-- **pricing_seed.json**: 구조만 완성, **값은 전부 예시값(0 또는 임시)**. 실제 단가는 회사 확인 후 입력 예정.
+- **단계**: STEP 3 핵심 완료 — TS DXF 파서 + 견적 엔진 + 전체 Next.js 앱 (2026-06-27)
+- **다음 할 일**: Vercel 대시보드에서 Neon Postgres DB 생성 → env 설정 → migrate → 단가 실제값 입력
+- **pricing_seed.json**: 구조만 완성, **값은 전부 0**. 실제 단가는 `/admin/pricing`에서 입력 예정.
 
 ## 핵심 결정사항 (PRD 요약)
 
@@ -30,11 +30,13 @@
 최종   = 소계 × (1 + 관리비율 + 마진율) × 수량
 ```
 
-## 미결 사항 (코드 작성 전 확인)
-1. **초기 단가표 값** — 실무 역산 필요
+## 미결 사항
+1. **초기 단가표 값** — 실무 역산 후 `/admin/pricing`에서 입력
 2. ~~**DXF 레이어 명세**~~ — **완료** (PRD 8번, PoC 검증 2026-06-27)
-3. **DB 선택** — SQLite(로컬) vs Vercel Postgres
-4. **STEP 파싱** — opencascade.js vs Python 마이크로서비스 (MVP 이후)
+3. ~~**DB 선택**~~ — **완료** (Neon Postgres, `@neondatabase/serverless`)
+4. **Vercel Neon DB 연결** — 대시보드에서 DB 생성 → env 설정 → migrate 실행
+5. **PDF 다운로드** — 결과 페이지 버튼 준비됨, 구현 미완
+6. **STEP 파싱** — MVP 이후
 
 ## DXF 파서 PoC
 - 위치: `samples/parse_dxf.py`
