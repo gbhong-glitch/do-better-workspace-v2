@@ -59,6 +59,7 @@ function EntityEl({ e, color }: { e: DrawEntity; color: string }) {
       ? <polygon  points={toPoints(e.pts)} {...s} />
       : <polyline points={toPoints(e.pts)} {...s} />
     case 'spline':   return <polyline points={toPoints(e.pts)} {...s} strokeDasharray="4 2" />
+    case 'insert':   return null
     case 'text':
       return (
         <text x={e.x} y={e.y}
@@ -95,7 +96,9 @@ export default function ViewerPage() {
   const [mode,      setMode]      = useState<Mode>('pan')
   const [boxes,     setBoxes]     = useState<SelBox[]>([])
   const [activeBox, setActiveBox] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingId,    setEditingId]    = useState<string | null>(null)
+  const [showResults,  setShowResults]  = useState(false)
+  const [resultTab,    setResultTab]    = useState<string | null>(null)
 
   // Refs to avoid stale closures in useEffect handlers
   const vboxRef       = useRef(vbox)
@@ -209,13 +212,15 @@ export default function ViewerPage() {
               { x1: start.x, y1: start.y, x2: pos.x, y2: pos.y },
               d.entities,
             ) : undefined
+            const newId = crypto.randomUUID()
             setBoxes(prev => [...prev, {
-              id: crypto.randomUUID(),
-              name,
+              id: newId, name,
               x1: start.x, y1: start.y,
               x2: pos.x, y2: pos.y,
               recognition,
             }])
+            setResultTab(newId)
+            setShowResults(true)
           }
         }
       }
@@ -441,8 +446,14 @@ export default function ViewerPage() {
             {mode === 'select' && (
               <span className="text-xs text-gray-400 ml-1">드래그로 조립체 영역 지정 · 이름은 더블클릭으로 변경</span>
             )}
-            {boxes.length > 0 && (
-              <span className="ml-auto text-xs text-blue-600 font-medium">{boxes.length}개 선택됨</span>
+            {boxes.some(b => b.recognition) && (
+              <button
+                onClick={() => setShowResults(v => !v)}
+                className={`ml-auto flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors
+                  ${showResults ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100 border border-gray-200'}`}
+              >
+                인식 결과 {showResults ? '닫기' : `보기 (${boxes.filter(b => b.recognition).length})`}
+              </button>
             )}
           </div>
         )}
@@ -500,7 +511,180 @@ export default function ViewerPage() {
             </svg>
           )}
         </div>
+        {/* Results Panel */}
+        {showResults && boxes.some(b => b.recognition) && (
+          <ResultsPanel
+            boxes={boxes}
+            resultTab={resultTab}
+            onTabChange={setResultTab}
+            onClose={() => setShowResults(false)}
+          />
+        )}
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Results Panel
+// ---------------------------------------------------------------------------
+
+type ManualCutMethod = '레이저' | '복합기' | 'NCT' | '절단' | ''
+
+function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
+  boxes: Array<{ id: string; name: string; recognition?: import('@/lib/recognizer').RecognitionResult }>
+  resultTab: string | null
+  onTabChange: (id: string) => void
+  onClose: () => void
+}) {
+  const [manualCut, setManualCut] = useState<Record<string, ManualCutMethod>>({})
+
+  const boxesWithResult = boxes.filter(b => b.recognition)
+  const current = boxesWithResult.find(b => b.id === resultTab) ?? boxesWithResult[0]
+  const r = current?.recognition
+
+  const isSinglePart = r && r.parts.length === 1 && r.parts[0].cutMethod === ''
+
+  return (
+    <div className="shrink-0 border-t border-gray-200 bg-white flex flex-col" style={{ height: 240 }}>
+      {/* Tab bar */}
+      <div className="flex items-center border-b border-gray-100 bg-gray-50 overflow-x-auto shrink-0">
+        {boxesWithResult.map(b => (
+          <button
+            key={b.id}
+            onClick={() => onTabChange(b.id)}
+            className={`px-3 py-1.5 text-xs whitespace-nowrap border-r border-gray-200 transition-colors
+              ${b.id === current?.id ? 'bg-white text-indigo-700 font-medium border-b border-b-white -mb-px' : 'text-gray-500 hover:bg-gray-100'}`}
+          >{b.name}</button>
+        ))}
+        <button onClick={onClose} className="ml-auto px-3 text-gray-400 hover:text-gray-700 text-xs shrink-0">✕ 닫기</button>
+      </div>
+
+      {/* Content */}
+      {r && current ? (
+        <div className="flex-1 overflow-auto p-3 text-xs">
+
+          {/* 단품 도면 안내 + 재단방식 수동 입력 */}
+          {isSinglePart && (
+            <div className="mb-2 flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded text-amber-700">
+              <span>단품 도면 — 재단방식 레이어 없음.</span>
+              <span className="font-medium">재단방식 선택:</span>
+              <select
+                value={manualCut[current.id] ?? ''}
+                onChange={e => setManualCut(prev => ({ ...prev, [current.id]: e.target.value as ManualCutMethod }))}
+                className="border border-amber-300 rounded px-1.5 py-0.5 text-xs bg-white text-gray-800"
+              >
+                <option value="">— 선택 —</option>
+                {['레이저', '복합기', 'NCT', '절단'].map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* 세부부품 테이블 */}
+          {r.parts.length > 0 ? (
+            <table className="w-full border-collapse mb-3" style={{ fontSize: 11 }}>
+              <thead>
+                <tr className="bg-gray-50 text-gray-500">
+                  <th className="border border-gray-200 px-2 py-1 text-left font-medium w-8">순번</th>
+                  <th className="border border-gray-200 px-2 py-1 text-left font-medium">재단방식</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center font-medium">절곡↓</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center font-medium">절곡↑</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center font-medium">합계</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center font-medium">재단길이</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center font-medium">재질</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center font-medium">두께</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center font-medium">수량</th>
+                </tr>
+              </thead>
+              <tbody>
+                {r.parts.map((p, i) => {
+                  const displayMethod = (p.cutMethod === '' && isSinglePart)
+                    ? (manualCut[current.id] ?? '')
+                    : p.cutMethod
+                  return (
+                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="border border-gray-200 px-2 py-1 text-gray-400">{i + 1}</td>
+                      <td className="border border-gray-200 px-2 py-1">
+                        {displayMethod ? (
+                          <span className={`px-1.5 py-0.5 rounded text-white font-mono text-[10px] ${CUT_COLOR[displayMethod] ?? 'bg-gray-400'}`}>
+                            {displayMethod}
+                          </span>
+                        ) : (
+                          <span className="text-amber-500 text-[10px]">미지정</span>
+                        )}
+                      </td>
+                      <td className="border border-gray-200 px-2 py-1 text-center text-red-600">{p.bendDown || '-'}</td>
+                      <td className="border border-gray-200 px-2 py-1 text-center text-orange-500">{p.bendUp || '-'}</td>
+                      <td className="border border-gray-200 px-2 py-1 text-center font-medium">{p.bendTotal || '-'}</td>
+                      <td className="border border-gray-200 px-2 py-1 text-center text-blue-600">
+                        {p.cutLengthM > 0 ? `${p.cutLengthM}m` : '-'}
+                      </td>
+                      <td className="border border-gray-200 px-2 py-1 text-center">{p.material  || '-'}</td>
+                      <td className="border border-gray-200 px-2 py-1 text-center">{p.thickness || '-'}</td>
+                      <td className="border border-gray-200 px-2 py-1 text-center">{p.qty       || '-'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-gray-50 text-gray-500 font-medium">
+                  <td colSpan={4} className="border border-gray-200 px-2 py-1 text-right">합계</td>
+                  <td className="border border-gray-200 px-2 py-1 text-center">{r.totalBends}곡</td>
+                  <td colSpan={4} className="border border-gray-200 px-2 py-1 text-gray-400 text-[10px]">
+                    {r.unassignedBends > 0 && `미배정 ${r.unassignedBends}곡`}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          ) : (
+            <p className="text-gray-400 mb-3">재단 라벨 미검출 — 박스 안에 레이저/복합기/NCT/절단 레이어 텍스트가 없습니다.</p>
+          )}
+
+          <div className="flex gap-6 flex-wrap">
+            {/* 특수가공 */}
+            <div>
+              <span className="font-medium text-gray-600">특수가공</span>
+              {Object.keys(r.specialFeatures).length > 0 ? (
+                <span className="ml-2 text-gray-700">
+                  {Object.entries(r.specialFeatures).map(([k, v]) => `${k} ${v}개`).join(' · ')}
+                </span>
+              ) : (
+                <span className="ml-2 text-gray-400">없음</span>
+              )}
+            </div>
+
+            {/* 파이프 절단 */}
+            {r.pipes.length > 0 && (
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-gray-600">파이프 절단</span>
+                <table className="mt-1 border-collapse" style={{ fontSize: 11 }}>
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-500">
+                      {['품번','규격','재질','수량','길이','각도'].map(h => (
+                        <th key={h} className="border border-gray-200 px-2 py-0.5 font-medium">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.pipes.map((row, i) => (
+                      <tr key={i}>
+                        {[row.no, row.spec, row.material, row.qty, row.length, row.angle].map((v, j) => (
+                          <td key={j} className="border border-gray-200 px-2 py-0.5">{v || '-'}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-gray-400 text-xs">
+          탭을 선택하세요
+        </div>
+      )}
     </div>
   )
 }

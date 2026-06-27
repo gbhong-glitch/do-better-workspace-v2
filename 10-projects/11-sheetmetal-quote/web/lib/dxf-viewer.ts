@@ -15,8 +15,9 @@ export interface DrawCircle  { kind: 'circle';   layer: string; cx: number; cy: 
 export interface DrawPolyline{ kind: 'polyline'; layer: string; pts: number[]; closed: boolean }
 export interface DrawText    { kind: 'text';     layer: string; x: number; y: number; h: number; txt: string }
 export interface DrawSpline  { kind: 'spline';   layer: string; pts: number[] }
+export interface DrawInsert  { kind: 'insert';   layer: string; name: string; x: number; y: number }
 
-export type DrawEntity = DrawLine | DrawArc | DrawCircle | DrawPolyline | DrawText | DrawSpline
+export type DrawEntity = DrawLine | DrawArc | DrawCircle | DrawPolyline | DrawText | DrawSpline | DrawInsert
 
 export interface ViewerBBox { minX: number; minY: number; maxX: number; maxY: number }
 
@@ -200,6 +201,12 @@ export function parseDxfForViewer(buffer: Buffer): ViewerData {
           txt: txt.replace(/[\r\n]+/g, ' ') })
         break
       }
+      case 'INSERT': {
+        const name = getProp(e.props, 2) ?? ''
+        if (name) draw.push({ kind: 'insert', layer,
+          name, x: gf(e.props, 10), y: gf(e.props, 20) })
+        break
+      }
       case 'SPLINE': {
         // Prefer fit points (11/21) for accuracy; fall back to control points (10/20)
         const fxs: number[] = [], fys: number[] = []
@@ -234,6 +241,7 @@ export function parseDxfForViewer(buffer: Buffer): ViewerData {
       case 'arc':     exp(e.cx - e.r, e.cy - e.r); exp(e.cx + e.r, e.cy + e.r); break
       case 'circle':  exp(e.cx - e.r, e.cy - e.r); exp(e.cx + e.r, e.cy + e.r); break
       case 'text':    exp(e.x, e.y); break
+      case 'insert':  exp(e.x, e.y); break
       case 'polyline':
       case 'spline':
         for (let i = 0; i < e.pts.length; i += 2) exp(e.pts[i], e.pts[i + 1])
