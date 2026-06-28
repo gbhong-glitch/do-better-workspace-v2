@@ -322,26 +322,7 @@ export function recognizeBox(
       const avgXList = [...bendGroupMap.values()].map(g => g.avgX).sort((a, b) => a - b)
       const xMed = avgXList[Math.floor(avgXList.length / 2)] ?? 0
 
-      // C. 굽힘선 그룹 → 행 구간(band) 기반 배정
-      interface Band { anchorIdx: number; lower: number; upper: number }
-      function makeBands(items: { idx: number; a: NameAnchor }[]): Band[] {
-        const sorted = [...items].sort((a, b) => b.a.y - a.a.y)
-        return sorted.map((item, i) => ({
-          anchorIdx: item.idx,
-          upper: i === 0                ? Infinity  : (sorted[i - 1].a.y + item.a.y) / 2,
-          lower: i === sorted.length - 1 ? -Infinity : (item.a.y + sorted[i + 1].a.y) / 2,
-        }))
-      }
-
-      // [DIAG] band 경계 테이블 출력 (전체 앵커 기준)
-      const diagPool = nameAnchors.map((a, idx) => ({ a, idx }))
-      const diagBands = makeBands(diagPool)
-      console.log(TAG, `[DIAG] xMed=${xMed.toFixed(1)}`)
-      console.log(TAG, `[DIAG] 앵커 X: ${nameAnchors.map(a => `${a.name}(${a.x.toFixed(0)})`).join(', ')}`)
-      console.log(TAG, '[DIAG] Band 경계:')
-      diagBands.forEach(b => console.log(TAG,
-        `  [${b.lower === -Infinity ? '-∞' : b.lower.toFixed(0)}, ${b.upper === Infinity ? '+∞' : b.upper.toFixed(0)}) → ${nameAnchors[b.anchorIdx].name} (앵커Y=${nameAnchors[b.anchorIdx].y.toFixed(0)})`))
-
+      // C. 굽힘선 그룹 → 2D 최근접 품명 배정
       const groupToAnchorIdx = new Map<string, number>()
       for (const [key, g] of bendGroupMap) {
         const zone = g.avgX < xMed ? 'L' : 'R'
@@ -349,20 +330,16 @@ export function recognizeBox(
           .map((a, idx) => ({ a, idx }))
           .filter(({ a }) => (a.x < xMed ? 'L' : 'R') === zone)
         const pool = zonePool.length > 0 ? zonePool : nameAnchors.map((a, idx) => ({ a, idx }))
-        const bands = makeBands(pool)
 
-        const band = bands.find(b => g.avgY >= b.lower && g.avgY < b.upper) ?? bands[0]
-        groupToAnchorIdx.set(key, band.anchorIdx)
-        console.log(TAG, '품명배정(band)', key,
+        const best = pool.reduce((b, c) =>
+          Math.hypot(g.avgX - c.a.x, g.avgY - c.a.y) <
+          Math.hypot(g.avgX - b.a.x, g.avgY - b.a.y) ? c : b
+        )
+        groupToAnchorIdx.set(key, best.idx)
+        console.log(TAG, '품명배정(2D)', key,
           `avgX=${g.avgX.toFixed(1)} avgY=${g.avgY.toFixed(1)}`,
-          `band=[${band.lower === -Infinity ? '-∞' : band.lower.toFixed(0)}, ${band.upper === Infinity ? '+∞' : band.upper.toFixed(0)})`,
-          `→ 품명:"${nameAnchors[band.anchorIdx].name}"`)
-        // [DIAG] 모든 앵커까지 dy/2D 거리
-        nameAnchors.forEach((a, ai) => {
-          const dy = Math.abs(g.avgY - a.y)
-          const dx = Math.abs(g.avgX - a.x)
-          console.log(TAG, `    [DIAG] ${a.name}: dy=${dy.toFixed(0)} dx=${dx.toFixed(0)} 2D=${Math.hypot(dx, dy).toFixed(0)}`)
-        })
+          `dist=${Math.hypot(g.avgX - best.a.x, g.avgY - best.a.y).toFixed(1)}`,
+          `→ 품명:"${best.a.name}"`)
       }
 
       // D 제거: labels[i] === nameAnchors[i] 이므로 anchorIdx가 곧 labelIdx
