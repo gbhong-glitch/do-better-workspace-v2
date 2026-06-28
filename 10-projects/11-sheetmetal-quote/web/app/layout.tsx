@@ -1,9 +1,18 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
+const inter = Inter({
+  variable: '--font-inter',
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: '--font-jetbrains-mono',
+  subsets: ['latin'],
+  weight: ['400'],
+})
 
 export const metadata: Metadata = {
   title: '심플라인 판금 견적',
@@ -12,18 +21,42 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">
-        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-          <a href="/" className="text-base font-semibold tracking-tight">
-            심플라인 <span className="text-gray-400 font-normal">판금견적</span>
-          </a>
-          <nav className="flex items-center gap-4">
-            <a href="/viewer" className="text-xs text-gray-500 hover:text-gray-800">도면 뷰어</a>
-            <a href="/admin/pricing" className="text-xs text-gray-400 hover:text-gray-600">단가 관리</a>
-          </nav>
+    <html lang="ko" className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+      <body className="h-full flex flex-col bg-background text-on-surface">
+
+        {/* ── TopNavBar ── */}
+        <header className="bg-surface border-b border-outline-variant flex items-center justify-between px-gutter h-16 shrink-0 z-50">
+          <div className="flex items-center gap-6">
+            <a href="/" className="text-lg font-bold text-primary tracking-tight leading-none">
+              심플라인{' '}
+              <span className="font-normal text-on-surface-variant">판금견적</span>
+            </a>
+            <nav className="hidden md:flex gap-1">
+              <a
+                href="/"
+                className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:bg-surface-container-high px-3 py-2 rounded transition-colors"
+              >
+                견적
+              </a>
+              <a
+                href="/viewer"
+                className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:bg-surface-container-high px-3 py-2 rounded transition-colors"
+              >
+                도면 뷰어
+              </a>
+              <a
+                href="/admin/pricing"
+                className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:bg-surface-container-high px-3 py-2 rounded transition-colors"
+              >
+                단가 관리
+              </a>
+            </nav>
+          </div>
         </header>
-        <main className="flex-1 flex flex-col">{children}</main>
+
+        {/* ── Page Content ── */}
+        <main className="flex-1 min-h-0 flex flex-col">{children}</main>
+
       </body>
     </html>
   )

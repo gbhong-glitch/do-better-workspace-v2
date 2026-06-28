@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-/* Google Fonts — step 2에서 next/font/google로 이전 예정 */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap');
 
 :root {
   --background: #f9f9ff;
@@ -11,6 +9,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 /* ════════════════════════════════════════
@@ -67,10 +67,6 @@
   --color-inverse-on-surface:         #ecf1ff;
   --color-outline:                    #737686;
   --color-outline-variant:            #c3c6d7;
-
-  /* ── Fonts ── */
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
 
   /* ── Spacing (4px base grid) ── */
   --spacing-xs:         4px;
