@@ -662,7 +662,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
                 <table className="w-full border-collapse" style={{ fontSize: 10 }}>
                   <thead>
                     <tr className="bg-[#f0f3ff]">
-                      {['#','재단','↓','↑','곡','절곡비','재단m','재질','두께','가로(mm)','세로(mm)','수량'].map(h => (
+                      {['#','재단','품명','↓','↑','곡','절곡비','재단m','재질','두께','가로(mm)','세로(mm)','수량'].map(h => (
                         <th key={h} className="border border-[#c3c6d7] px-1.5 py-1 text-[9px] font-bold text-[#565e74] uppercase tracking-wider text-center whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -679,6 +679,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
                               ? <span className={`px-1 py-0.5 rounded text-white text-[9px] font-mono ${CUT_COLOR[displayMethod] ?? 'bg-gray-400'}`}>{displayMethod}</span>
                               : <span className="text-amber-500 text-[9px]">미지정</span>}
                           </td>
+                          <td className="border border-[#c3c6d7] px-1.5 py-1 text-center text-[#111c2d] whitespace-nowrap">{p.partName || '—'}</td>
                           <td className="border border-[#c3c6d7] px-1.5 py-1 text-center text-red-500">{p.bendDown || '—'}</td>
                           <td className="border border-[#c3c6d7] px-1.5 py-1 text-center text-orange-500">{p.bendUp || '—'}</td>
                           <td className="border border-[#c3c6d7] px-1.5 py-1 text-center font-bold">{p.bendTotal || '—'}</td>
