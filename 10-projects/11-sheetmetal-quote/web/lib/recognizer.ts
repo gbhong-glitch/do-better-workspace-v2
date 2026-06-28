@@ -193,7 +193,9 @@ function parsePipeTable(texts: Array<{ x: number; y: number; txt: string }>): Pi
 export function recognizeBox(
   sel: { x1: number; y1: number; x2: number; y2: number },
   entities: DrawEntity[],
+  label?: string,
 ): RecognitionResult {
+  const TAG = label ? `[진단][${label}]` : '[진단]'
 
   const box = toBbox(sel.x1, sel.y1, sel.x2, sel.y2)
 
@@ -205,7 +207,7 @@ export function recognizeBox(
   // ── 절곡선 수집 + collinear 그룹핑 ──────────────────────────────────────────
   // 끝점 하나 이상이 박스 안이면 포함.
   // (layer, 방향H/V/D, 직선좌표 2단위 반올림) 키가 같으면 1곡으로 합산.
-  interface BendGroup { isDown: boolean; totalLength: number; lines: DrawLine[]; avgY: number }
+  interface BendGroup { isDown: boolean; totalLength: number; lines: DrawLine[]; avgX: number; avgY: number }
   const bendGroupMap = new Map<string, BendGroup>()
   const bendLinesInBox: DrawLine[] = []   // 바운딩박스 계산용 (전체 LINE 보존)
 
@@ -220,21 +222,23 @@ export function recognizeBox(
     bendLinesInBox.push(bl)
 
     const key = bendKey(bl)
-    console.log('[진단] LINE', bl.layer, `(${bl.x1.toFixed(1)},${bl.y1.toFixed(1)})→(${bl.x2.toFixed(1)},${bl.y2.toFixed(1)})`, '→ key:', key)
+    console.log(TAG, 'LINE', bl.layer, `(${bl.x1.toFixed(1)},${bl.y1.toFixed(1)})→(${bl.x2.toFixed(1)},${bl.y2.toFixed(1)})`, '→ key:', key)
     let g = bendGroupMap.get(key)
     if (!g) {
-      g = { isDown, totalLength: 0, lines: [], avgY: 0 }
+      g = { isDown, totalLength: 0, lines: [], avgX: 0, avgY: 0 }
       bendGroupMap.set(key, g)
     }
     g.lines.push(bl)
     g.totalLength += entityLength(bl)
   }
-  console.log('[진단] 최종 그룹 수(곡수):', bendGroupMap.size)
+  console.log(TAG, '최종 그룹 수(곡수):', bendGroupMap.size)
   for (const [key, g] of bendGroupMap)
-    console.log('[진단] 그룹', key, '→', g.lines.length, '개 LINE')
-  // 그룹별 avgY 확정 (라벨 배정용)
-  for (const g of bendGroupMap.values())
+    console.log(TAG, '그룹', key, '→', g.lines.length, '개 LINE')
+  // 그룹별 avgX/avgY 확정 (라벨 배정용)
+  for (const g of bendGroupMap.values()) {
+    g.avgX = g.lines.reduce((s, l) => s + (l.x1 + l.x2) / 2, 0) / g.lines.length
     g.avgY = g.lines.reduce((s, l) => s + (l.y1 + l.y2) / 2, 0) / g.lines.length
+  }
 
   let bendDownCount = 0, bendUpCount = 0
   for (const g of bendGroupMap.values())
@@ -257,20 +261,85 @@ export function recognizeBox(
     }))
     .sort((a, b) => b.y - a.y)
 
-  // ── 2. 절곡 그룹 → Y최근접 라벨 배정 ─────────────────────────────────────
+  console.log(TAG, `라벨 수: ${labels.length}개`)
+  labels.forEach((l, i) =>
+    console.log(TAG, `  라벨[${i}] layer="${l.cutMethod}" text="${l.text}" x=${l.x.toFixed(1)} y=${l.y.toFixed(1)}`)
+  )
+
+  // ── 2. 절곡 그룹 → XY 영역 기반 부품 배정 ──────────────────────────────────
+  // Pass 1: 2D 최근접으로 임시 배정 → 라벨별 굽힘선 bbox 구성
+  // Pass 2: bbox 포함 여부로 최종 배정 (임계값 초과 시 미배정)
   let unassigned = 0
 
-  for (const [, g] of bendGroupMap) {
-    if (!labels.length) { unassigned++; continue }
+  if (labels.length > 0) {
+    interface LabelBbox { minX: number; maxX: number; minY: number; maxY: number }
+    const lbbox: (LabelBbox | null)[] = labels.map(() => null)
 
-    let best = labels[0], bestDist = Math.abs(g.avgY - best.y)
-    for (let i = 1; i < labels.length; i++) {
-      const d = Math.abs(g.avgY - labels[i].y)
-      if (d < bestDist) { bestDist = d; best = labels[i] }
+    for (const [, g] of bendGroupMap) {
+      let bestIdx = 0
+      let bestDist = Math.hypot(g.avgX - labels[0].x, g.avgY - labels[0].y)
+      for (let i = 1; i < labels.length; i++) {
+        const d = Math.hypot(g.avgX - labels[i].x, g.avgY - labels[i].y)
+        if (d < bestDist) { bestDist = d; bestIdx = i }
+      }
+      if (!lbbox[bestIdx]) lbbox[bestIdx] = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }
+      const bb = lbbox[bestIdx]!
+      for (const bl of g.lines) {
+        bb.minX = Math.min(bb.minX, bl.x1, bl.x2)
+        bb.maxX = Math.max(bb.maxX, bl.x1, bl.x2)
+        bb.minY = Math.min(bb.minY, bl.y1, bl.y2)
+        bb.maxY = Math.max(bb.maxY, bl.y1, bl.y2)
+      }
     }
-    if (g.isDown) best.bendDown++; else best.bendUp++
-    for (const bl of g.lines) best.bendLines.push(bl)
-    best.bendGroupLengths.push(Math.round(g.totalLength))
+
+    const PAD = 100
+    const bboxes = lbbox.map(bb =>
+      bb && bb.minX !== Infinity
+        ? { minX: bb.minX - PAD, maxX: bb.maxX + PAD, minY: bb.minY - PAD, maxY: bb.maxY + PAD }
+        : null
+    )
+
+    for (const [key, g] of bendGroupMap) {
+      const cx = g.avgX, cy = g.avgY
+      const hits = bboxes
+        .map((bb, i) => ({ i, bb }))
+        .filter(({ bb }) => bb !== null && cx >= bb.minX && cx <= bb.maxX && cy >= bb.minY && cy <= bb.maxY)
+
+      let bestIdx: number
+      let assignReason: string
+
+      if (hits.length === 1) {
+        bestIdx = hits[0].i
+        assignReason = 'bbox포함'
+      } else {
+        // bbox 미포함(0개) 또는 경계 중복(2개+): 2D 최근접
+        bestIdx = 0
+        let bestDist = Math.hypot(cx - labels[0].x, cy - labels[0].y)
+        for (let i = 1; i < labels.length; i++) {
+          const d = Math.hypot(cx - labels[i].x, cy - labels[i].y)
+          if (d < bestDist) { bestDist = d; bestIdx = i }
+        }
+        // 임계값: 해당 라벨 bbox의 장변 길이
+        const bb = bboxes[bestIdx]
+        const threshold = bb ? Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY) : 2000
+        if (bestDist > threshold) {
+          unassigned++
+          console.log(TAG, '미배정', key,
+            `cx=${cx.toFixed(1)} cy=${cy.toFixed(1)}`,
+            `dist=${bestDist.toFixed(1)} > threshold=${threshold.toFixed(1)}`)
+          continue
+        }
+        assignReason = `2D근접 dist=${bestDist.toFixed(1)}`
+      }
+
+      const best = labels[bestIdx]
+      console.log(TAG, '배정', key,
+        `avgX=${cx.toFixed(1)} avgY=${cy.toFixed(1)}`, g.isDown ? '▼아래로' : '▲위로',
+        `→ 라벨:"${best.text}"`, assignReason)
+      if (g.isDown) best.bendDown++; else best.bendUp++
+      for (const bl of g.lines) best.bendLines.push(bl)
+      best.bendGroupLengths.push(Math.round(g.totalLength))
+    }
   }
 
   // ── 3. 재단길이 = 절곡 바운딩박스 안 외형선 합 ──────────────────────────

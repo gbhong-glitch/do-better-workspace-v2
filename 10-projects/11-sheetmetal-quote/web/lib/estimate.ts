@@ -144,14 +144,16 @@ export function calculateEstimate(input: EstimateInput): EstimateResult {
   // bendLengths 있으면 tier 단가(bending.ts), 없으면 setup+per_m 폴백
   const bends       = parsed.bendTotal ?? 0
   const bendLengthM = (parsed.bendLengthMm ?? 0) / 1000
+  const bendInfo   = pricing.bend_price[bendMode] ?? { setup: 0, per_m: 0 }
+  const setupUnit  = bendInfo.setup  ?? 0
+  const perMUnit   = bendInfo.per_m  ?? 0
   let bendSetupCost  = 0
   let bendLengthCost = 0
   if (input.bendLengths && input.bendLengths.length > 0) {
     bendLengthCost = Math.round(calcBendCost(input.bendLengths))
   } else {
-    const bendInfo = pricing.bend_price[bendMode] ?? { setup: 0, per_m: 0 }
-    bendSetupCost  = Math.round(bends * (bendInfo.setup ?? 0))
-    bendLengthCost = Math.round(bendLengthM * (bendInfo.per_m ?? 0))
+    bendSetupCost  = Math.round(bends * setupUnit)
+    bendLengthCost = Math.round(bendLengthM * perMUnit)
   }
   const bendCost = bendSetupCost + bendLengthCost
 

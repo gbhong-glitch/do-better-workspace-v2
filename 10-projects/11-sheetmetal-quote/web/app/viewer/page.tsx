@@ -204,6 +204,7 @@ export default function ViewerPage() {
             const recognition = d ? recognizeBox(
               { x1: start.x, y1: start.y, x2: pos.x, y2: pos.y },
               d.entities,
+              name,
             ) : undefined
             const newId = crypto.randomUUID()
             setBoxes(prev => [...prev, { id: newId, name, x1: start.x, y1: start.y, x2: pos.x, y2: pos.y, recognition }])
