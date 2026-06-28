@@ -220,6 +220,7 @@ export function recognizeBox(
     bendLinesInBox.push(bl)
 
     const key = bendKey(bl)
+    console.log('[진단] LINE', bl.layer, `(${bl.x1.toFixed(1)},${bl.y1.toFixed(1)})→(${bl.x2.toFixed(1)},${bl.y2.toFixed(1)})`, '→ key:', key)
     let g = bendGroupMap.get(key)
     if (!g) {
       g = { isDown, totalLength: 0, lines: [], avgY: 0 }
@@ -228,6 +229,9 @@ export function recognizeBox(
     g.lines.push(bl)
     g.totalLength += entityLength(bl)
   }
+  console.log('[진단] 최종 그룹 수(곡수):', bendGroupMap.size)
+  for (const [key, g] of bendGroupMap)
+    console.log('[진단] 그룹', key, '→', g.lines.length, '개 LINE')
   // 그룹별 avgY 확정 (라벨 배정용)
   for (const g of bendGroupMap.values())
     g.avgY = g.lines.reduce((s, l) => s + (l.y1 + l.y2) / 2, 0) / g.lines.length
