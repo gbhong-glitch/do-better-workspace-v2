@@ -6,11 +6,11 @@
 
 - PRD.md 업데이트 완료(커밋 0bf1f88): 기능 7개(실시간 재계산, 단가표 연동, 인라인 단가 수정, 표면처리·특수가공, BOM 관리, PDF 견적서 출력, 견적 이력·저장) + UI 디자인 원칙 추가
 - UI 디자인 핵심 결정: 전체 다크 금지. 도면 미리보기 캔버스만 다크(#0f172a), 입력·단가·BOM·합계 작업 패널은 밝은 배경(SolidWorks/AutoCAD 방식). 출력(PDF·인쇄)은 흰 배경.
+- Stitch 디자인을 web 프로젝트에 3단계로 구현 완료: globals.css 디자인토큰 → layout.tsx 헤더/폰트 → page.tsx 좌 다크캔버스+우 밝은패널 분할레이아웃. localhost:3000에서 실제 화면 확인함.
 
 ## 다음 할 일
 
-- Stitch(stitch.withgoogle.com)로 UI 시안 생성: 앱 종류 Web, 모델 3.1 Pro, PRD.md 업로드
-- 시안을 프로젝트에 합치고 Claude Code로 구현
+- 실제 DXF 파일 업로드 동작 테스트 → 견적 계산 버튼 연결 → 단가표(pricing_seed/bending_pricing) 연동
 
 ## 참고
 
