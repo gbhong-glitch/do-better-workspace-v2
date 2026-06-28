@@ -156,13 +156,19 @@ export default function ViewerPage() {
     if (!el || !data) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const rect = el.getBoundingClientRect()
-      const mxF = (e.clientX - rect.left) / rect.width
-      const myF = (e.clientY - rect.top)  / rect.height
-      const v   = vboxRef.current
-      const sx  = v.x + mxF * v.w, sy = v.y + myF * v.h
-      const k   = e.deltaY > 0 ? 1.15 : 1 / 1.15
-      const nw  = v.w * k, nh = v.h * k
+      const ctm = el.getScreenCTM()
+      if (!ctm) return
+      // 커서의 정확한 viewBox 좌표 (preserveAspectRatio 여백 포함)
+      const pt = el.createSVGPoint()
+      pt.x = e.clientX; pt.y = e.clientY
+      const { x: sx, y: sy } = pt.matrixTransform(ctm.inverse())
+
+      const k  = e.deltaY > 0 ? 1.15 : 1 / 1.15
+      const v  = vboxRef.current
+      const nw = v.w * k, nh = v.h * k
+      // (sx, sy)가 화면에서 같은 비율 위치에 머물도록 vbox 기준점 재계산
+      const mxF = (sx - v.x) / v.w
+      const myF = (sy - v.y) / v.h
       setVbox({ x: sx - mxF * nw, y: sy - myF * nh, w: nw, h: nh })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
@@ -550,7 +556,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
   const isSinglePart = r && r.parts.length === 1 && r.parts[0].cutMethod === ''
 
   return (
-    <div className="shrink-0 border-t border-gray-200 bg-white flex flex-col" style={{ height: 300 }}>
+    <div className="shrink-0 border-t border-gray-200 bg-white flex flex-col" style={{ height: 300, userSelect: 'none' }}>
       {/* Tab bar */}
       <div className="flex items-center border-b border-gray-100 bg-gray-50 overflow-x-auto shrink-0">
         {boxesWithResult.map(b => (
