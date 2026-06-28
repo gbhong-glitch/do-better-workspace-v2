@@ -2,7 +2,7 @@
 
 최종 업데이트: 2026-06-28
 
-> **지시6 진행중**: step3 완료 (estimate.ts 절곡비 tier 연결), 다음은 step4 뷰어에 금액 표시
+> **지시6 완료**: 절곡비 자동 계산 step1~4 끝 (bendLengths 인식 → bending.ts 단가 모듈 → estimate.ts 연결 → 뷰어 표시)
 
 ---
 

@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import type { ViewerData, DrawEntity, DrawArc } from '@/lib/dxf-viewer'
 import { recognizeBox, type RecognitionResult } from '@/lib/recognizer'
+import { calcBendCost } from '@/lib/bending'
 
 // ---------------------------------------------------------------------------
 // Layer colors
@@ -590,6 +591,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
                   <th className="border border-gray-200 px-2 py-1 text-center font-medium">절곡↓</th>
                   <th className="border border-gray-200 px-2 py-1 text-center font-medium">절곡↑</th>
                   <th className="border border-gray-200 px-2 py-1 text-center font-medium">합계</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center font-medium">절곡비</th>
                   <th className="border border-gray-200 px-2 py-1 text-center font-medium">재단길이</th>
                   <th className="border border-gray-200 px-2 py-1 text-center font-medium">재질</th>
                   <th className="border border-gray-200 px-2 py-1 text-center font-medium">두께</th>
@@ -601,6 +603,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
                   const displayMethod = (p.cutMethod === '' && isSinglePart)
                     ? (manualCut[current.id] ?? '')
                     : p.cutMethod
+                  const bendCost = calcBendCost(p.bendLengths)
                   return (
                     <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                       <td className="border border-gray-200 px-2 py-1 text-gray-400">{i + 1}</td>
@@ -616,6 +619,9 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
                       <td className="border border-gray-200 px-2 py-1 text-center text-red-600">{p.bendDown || '-'}</td>
                       <td className="border border-gray-200 px-2 py-1 text-center text-orange-500">{p.bendUp || '-'}</td>
                       <td className="border border-gray-200 px-2 py-1 text-center font-medium">{p.bendTotal || '-'}</td>
+                      <td className="border border-gray-200 px-2 py-1 text-center text-emerald-700 font-medium">
+                        {bendCost > 0 ? bendCost.toLocaleString() + '원' : '-'}
+                      </td>
                       <td className="border border-gray-200 px-2 py-1 text-center text-blue-600">
                         {p.cutLengthM > 0 ? `${p.cutLengthM}m` : '-'}
                       </td>
@@ -630,6 +636,12 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
                 <tr className="bg-gray-50 text-gray-500 font-medium">
                   <td colSpan={4} className="border border-gray-200 px-2 py-1 text-right">합계</td>
                   <td className="border border-gray-200 px-2 py-1 text-center">{r.totalBends}곡</td>
+                  <td className="border border-gray-200 px-2 py-1 text-center text-emerald-700">
+                    {(() => {
+                      const total = r.parts.reduce((s, p) => s + calcBendCost(p.bendLengths), 0)
+                      return total > 0 ? total.toLocaleString() + '원' : '-'
+                    })()}
+                  </td>
                   <td colSpan={4} className="border border-gray-200 px-2 py-1 text-gray-400 text-[10px]">
                     {r.unassignedBends > 0 && `미배정 ${r.unassignedBends}곡`}
                   </td>
