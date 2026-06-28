@@ -547,7 +547,10 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
   onTabChange: (id: string) => void
   onClose: () => void
 }) {
-  const [manualCut, setManualCut] = useState<Record<string, ManualCutMethod>>({})
+  const [manualCut,   setManualCut]   = useState<Record<string, ManualCutMethod>>({})
+  const [quoteInputs, setQuoteInputs] = useState<Record<string, {
+    weightKg: string; matUnit: string; cutUnit: string; holeCount: string; pierceUnit: string
+  }>>({})
 
   const boxesWithResult = boxes.filter(b => b.recognition)
   const current = boxesWithResult.find(b => b.id === resultTab) ?? boxesWithResult[0]
@@ -555,8 +558,24 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
 
   const isSinglePart = r && r.parts.length === 1 && r.parts[0].cutMethod === ''
 
+  const totalBendCost = r ? r.parts.reduce((s, p) => s + calcBendCost(p.bendLengths), 0) : 0
+  const totalCutM     = r ? Math.round(r.parts.reduce((s, p) => s + p.cutLengthM, 0) * 100) / 100 : 0
+  const autoMaterial  = r ? (r.parts[0]?.material ?? '') : ''
+
+  const currentId = current?.id ?? ''
+  const qin = quoteInputs[currentId] ?? { weightKg: '', matUnit: '', cutUnit: '', holeCount: '', pierceUnit: '' }
+  const updateQin = (patch: Partial<typeof qin>) =>
+    setQuoteInputs(prev => ({ ...prev, [currentId]: { ...qin, ...patch } }))
+
+  const 재료비 = Math.round((parseFloat(qin.weightKg) || 0) * (parseFloat(qin.matUnit) || 0))
+  const 절단비 = Math.round(
+    totalCutM * (parseFloat(qin.cutUnit) || 0) +
+    (parseInt(qin.holeCount) || 0) * (parseFloat(qin.pierceUnit) || 0)
+  )
+  const 합계   = 재료비 + 절단비 + Math.round(totalBendCost)
+
   return (
-    <div className="shrink-0 border-t border-gray-200 bg-white flex flex-col" style={{ height: 300, userSelect: 'none' }}>
+    <div className="shrink-0 border-t border-gray-200 bg-white flex flex-col" style={{ height: 420, userSelect: 'none' }}>
       {/* Tab bar */}
       <div className="flex items-center border-b border-gray-100 bg-gray-50 overflow-x-auto shrink-0">
         {boxesWithResult.map(b => (
@@ -575,30 +594,63 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
         <div className="flex-1 overflow-auto text-xs">
 
           {/* 요약 카드 */}
-          {(() => {
-            const totalBendCost = r.parts.reduce((s, p) => s + calcBendCost(p.bendLengths), 0)
-            const totalCutM     = Math.round(r.parts.reduce((s, p) => s + p.cutLengthM, 0) * 100) / 100
-            return (
-              <div className="flex gap-2 px-3 pt-3 pb-2 border-b border-gray-100">
-                <div className="flex-1 rounded-lg p-2.5 bg-emerald-50">
-                  <p className="text-[10px] font-medium text-emerald-600 uppercase tracking-wide">절곡비</p>
-                  <p className="text-lg font-bold text-emerald-700 mt-0.5 leading-none">
-                    {totalBendCost > 0 ? totalBendCost.toLocaleString() + '원' : '-'}
-                  </p>
-                </div>
-                <div className="flex-1 rounded-lg p-2.5 bg-blue-50">
-                  <p className="text-[10px] font-medium text-blue-600 uppercase tracking-wide">총 절곡수</p>
-                  <p className="text-lg font-bold text-blue-700 mt-0.5 leading-none">{r.totalBends}곡</p>
-                </div>
-                <div className="flex-1 rounded-lg p-2.5 bg-slate-50">
-                  <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">재단길이</p>
-                  <p className="text-lg font-bold text-slate-700 mt-0.5 leading-none">
-                    {totalCutM > 0 ? totalCutM + 'm' : '-'}
-                  </p>
-                </div>
-              </div>
-            )
-          })()}
+          <div className="flex gap-2 px-3 pt-3 pb-2 border-b border-gray-100">
+            <div className="flex-1 rounded-lg p-2.5 bg-emerald-50">
+              <p className="text-[10px] font-medium text-emerald-600 uppercase tracking-wide">절곡비</p>
+              <p className="text-lg font-bold text-emerald-700 mt-0.5 leading-none">
+                {totalBendCost > 0 ? totalBendCost.toLocaleString() + '원' : '-'}
+              </p>
+            </div>
+            <div className="flex-1 rounded-lg p-2.5 bg-blue-50">
+              <p className="text-[10px] font-medium text-blue-600 uppercase tracking-wide">총 절곡수</p>
+              <p className="text-lg font-bold text-blue-700 mt-0.5 leading-none">{r.totalBends}곡</p>
+            </div>
+            <div className="flex-1 rounded-lg p-2.5 bg-slate-50">
+              <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">재단길이</p>
+              <p className="text-lg font-bold text-slate-700 mt-0.5 leading-none">
+                {totalCutM > 0 ? totalCutM + 'm' : '-'}
+              </p>
+            </div>
+          </div>
+
+          {/* 견적 입력 */}
+          <div className="px-3 py-2 border-b border-gray-100 bg-slate-50">
+            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">견적 입력</p>
+            <div className="flex gap-3 mb-2 text-[11px]">
+              <span className="text-gray-500">재질 <span className="font-medium text-gray-800">{autoMaterial || '-'}</span></span>
+              <span className="text-gray-500">재단길이 <span className="font-medium text-gray-800">{totalCutM > 0 ? totalCutM + 'm' : '-'}</span></span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              {([
+                ['중량(kg)',         'weightKg',   '0.01'],
+                ['재료단가(원/kg)',   'matUnit',    '1'   ],
+                ['절단단가(원/m)',    'cutUnit',    '1'   ],
+                ['구멍수(개)',        'holeCount',  '1'   ],
+                ['피어싱단가(원/개)', 'pierceUnit', '1'   ],
+              ] as [string, keyof typeof qin, string][]).map(([label, key, step]) => (
+                <label key={key} className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-gray-500">{label}</span>
+                  <input
+                    type="number" min="0" step={step} placeholder="0"
+                    value={qin[key]}
+                    onChange={e => updateQin({ [key]: e.target.value } as Partial<typeof qin>)}
+                    className="border border-gray-200 rounded px-1.5 py-0.5 text-[11px] bg-white w-full"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-[11px]">
+              <span className="text-gray-500">재료비 <span className="font-medium text-gray-800">{재료비 > 0 ? 재료비.toLocaleString() + '원' : '-'}</span></span>
+              <span className="text-gray-300">+</span>
+              <span className="text-gray-500">절단비 <span className="font-medium text-gray-800">{절단비 > 0 ? 절단비.toLocaleString() + '원' : '-'}</span></span>
+              <span className="text-gray-300">+</span>
+              <span className="text-gray-500">절곡비 <span className="font-medium text-emerald-700">{totalBendCost > 0 ? Math.round(totalBendCost).toLocaleString() + '원' : '-'}</span></span>
+              <span className="text-gray-300">=</span>
+              <span className="font-semibold text-blue-700 bg-blue-50 rounded px-2 py-0.5">
+                합계 {합계 > 0 ? 합계.toLocaleString() + '원' : '-'}
+              </span>
+            </div>
+          </div>
 
           <div className="p-3">
 
@@ -674,10 +726,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
                   <td colSpan={4} className="border border-gray-200 px-2 py-1 text-right">합계</td>
                   <td className="border border-gray-200 px-2 py-1 text-center">{r.totalBends}곡</td>
                   <td className="border border-gray-200 px-2 py-1 text-center text-emerald-700">
-                    {(() => {
-                      const total = r.parts.reduce((s, p) => s + calcBendCost(p.bendLengths), 0)
-                      return total > 0 ? total.toLocaleString() + '원' : '-'
-                    })()}
+                    {totalBendCost > 0 ? Math.round(totalBendCost).toLocaleString() + '원' : '-'}
                   </td>
                   <td colSpan={4} className="border border-gray-200 px-2 py-1 text-gray-400 text-[10px]">
                     {r.unassignedBends > 0 && `미배정 ${r.unassignedBends}곡`}
