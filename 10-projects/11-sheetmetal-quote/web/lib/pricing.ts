@@ -1,29 +1,29 @@
 import { sql } from './db'
 import type { PricingData } from './estimate'
+import rawDefaults from '../data/pricing_defaults.json'
 
-// 초기 시드 — 실제 단가는 /admin/pricing에서 입력
+// JSON의 _meta, _unit, _note 같은 메타 키를 제거하고 숫자 값만 추출
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function omitMeta(obj: Record<string, any>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([k]) => !k.startsWith('_'))
+  )
+}
+
 export const PRICING_SEED: PricingData = {
-  material_price: {
-    SPCC: 0, SECC: 0, SGCC: 0, SS400: 0,
-    SUS304: 0, SUS316: 0, AL5052: 0, AL6061: 0,
-  },
-  cut_price_per_m: {
-    '0.8': 0, '1.0': 0, '1.2': 0, '1.5': 0, '2.0': 0,
-    '2.3': 0, '3.0': 0, '4.0': 0, '5.0': 0, '6.0': 0,
-  },
-  pierce_price: {
-    '0.8': 0, '1.0': 0, '1.2': 0, '1.5': 0, '2.0': 0,
-    '2.3': 0, '3.0': 0, '4.0': 0, '5.0': 0, '6.0': 0,
-  },
+  material_price:        omitMeta(rawDefaults.material_price),
+  cut_price_per_m:       omitMeta(rawDefaults.cut_price_per_m),
+  pierce_price:          omitMeta(rawDefaults.pierce_price),
   bend_price: {
-    P4:      { setup: 0, per_m: 0 },
-    general: { setup: 0, per_m: 0 },
+    P4:      rawDefaults.bend_price.P4,
+    general: rawDefaults.bend_price.general,
   },
-  special_process_price: {
-    TAP_M3: 0, TAP_M4: 0, TAP_M5: 0, TAP_M6: 0, TAP_M8: 0, BUR: 0, EM: 0,
+  special_process_price: omitMeta(rawDefaults.special_process_price),
+  surface_price:         omitMeta(rawDefaults.surface_price),
+  overhead: {
+    management_rate: rawDefaults.overhead.management_rate,
+    margin_rate:     rawDefaults.overhead.margin_rate,
   },
-  surface_price: { '분체도장': 0, '도장': 0, '도금': 0, '없음': 0 },
-  overhead: { management_rate: 0, margin_rate: 0 },
 }
 
 export async function getPricing(): Promise<PricingData> {
