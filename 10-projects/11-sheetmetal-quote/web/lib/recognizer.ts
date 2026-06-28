@@ -18,6 +18,8 @@ export interface RecognizedPart {
   bendTotal:   number
   bendLengths: number[] // 각 굽힘선 길이(mm) — tier 단가 계산용
   cutLengthM:  number   // 전개도 외형선 합 (m), 절곡 없으면 0
+  widthMm:     number   // 부품 외형선 bbox 가로 (mm)
+  heightMm:    number   // 부품 외형선 bbox 세로 (mm)
   material:    string
   thickness:   string
   qty:         string
@@ -249,7 +251,8 @@ export function recognizeBox(
     cutMethod: string; text: string; x: number; y: number
     bendDown: number; bendUp: number; bendLines: DrawLine[]
     bendGroupLengths: number[]   // 그룹별 합산 길이(mm) — tier 단가용
-    cutLengthM: number; material: string; thickness: string; qty: string
+    cutLengthM: number; widthMm: number; heightMm: number
+    material: string; thickness: string; qty: string
   }
 
   const labels: CutLabel[] = inBox
@@ -257,7 +260,7 @@ export function recognizeBox(
     .map(e => ({
       cutMethod: e.layer, text: e.txt, x: e.x, y: e.y,
       bendDown: 0, bendUp: 0, bendLines: [], bendGroupLengths: [],
-      cutLengthM: 0, material: '', thickness: '', qty: '',
+      cutLengthM: 0, widthMm: 0, heightMm: 0, material: '', thickness: '', qty: '',
     }))
     .sort((a, b) => b.y - a.y)
 
@@ -355,11 +358,28 @@ export function recognizeBox(
       minY: Math.min(...ys) - pad, maxY: Math.max(...ys) + pad,
     }
     let total = 0
+    let oxMin = Infinity, oxMax = -Infinity, oyMin = Infinity, oyMax = -Infinity
     for (const e of outline) {
       const c = entityCenter(e)
-      if (c && inBbox(c.x, c.y, bb)) total += entityLength(e)
+      if (!c || !inBbox(c.x, c.y, bb)) continue
+      total += entityLength(e)
+      if (e.kind === 'line') {
+        oxMin = Math.min(oxMin, e.x1, e.x2); oxMax = Math.max(oxMax, e.x1, e.x2)
+        oyMin = Math.min(oyMin, e.y1, e.y2); oyMax = Math.max(oyMax, e.y1, e.y2)
+      } else {
+        oxMin = Math.min(oxMin, c.x); oxMax = Math.max(oxMax, c.x)
+        oyMin = Math.min(oyMin, c.y); oyMax = Math.max(oyMax, c.y)
+      }
     }
     lbl.cutLengthM = Math.round(total / 10) / 100
+    if (oxMin !== Infinity) {
+      lbl.widthMm  = Math.round(oxMax - oxMin)
+      lbl.heightMm = Math.round(oyMax - oyMin)
+    } else {
+      // 외형선 없음 → 절곡선 범위로 대체
+      lbl.widthMm  = Math.round(Math.max(...xs) - Math.min(...xs))
+      lbl.heightMm = Math.round(Math.max(...ys) - Math.min(...ys))
+    }
   }
 
   // ── 4. SW_노트 → Y최근접 라벨에 재질/두께/수량 ───────────────────────────
@@ -402,15 +422,30 @@ export function recognizeBox(
         cutMethod: '', text: '', x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2,
         bendDown: bendDownCount, bendUp: bendUpCount, bendLines: [...bendLinesInBox],
         bendGroupLengths: [...bendGroupMap.values()].map(g => Math.round(g.totalLength)),
-        cutLengthM: 0, material: '', thickness: '', qty: '',
+        cutLengthM: 0, widthMm: 0, heightMm: 0, material: '', thickness: '', qty: '',
       }
       labels.push(fakeLbl)
       unassigned = 0
 
-      // 재단길이 = 박스 안 외형선 전체 합
+      // 재단길이 + 외형선 bbox
       let totalLen = 0
-      for (const e of outline) totalLen += entityLength(e)
+      let oxMin = Infinity, oxMax = -Infinity, oyMin = Infinity, oyMax = -Infinity
+      for (const e of outline) {
+        totalLen += entityLength(e)
+        const c = entityCenter(e)
+        if (e.kind === 'line') {
+          oxMin = Math.min(oxMin, e.x1, e.x2); oxMax = Math.max(oxMax, e.x1, e.x2)
+          oyMin = Math.min(oyMin, e.y1, e.y2); oyMax = Math.max(oyMax, e.y1, e.y2)
+        } else if (c) {
+          oxMin = Math.min(oxMin, c.x); oxMax = Math.max(oxMax, c.x)
+          oyMin = Math.min(oyMin, c.y); oyMax = Math.max(oyMax, c.y)
+        }
+      }
       fakeLbl.cutLengthM = Math.round(totalLen / 10) / 100
+      if (oxMin !== Infinity) {
+        fakeLbl.widthMm  = Math.round(oxMax - oxMin)
+        fakeLbl.heightMm = Math.round(oyMax - oyMin)
+      }
 
       // SW_노트 재배정
       for (const note of notes) {
@@ -455,6 +490,8 @@ export function recognizeBox(
     bendTotal:   l.bendDown + l.bendUp,
     bendLengths: l.bendGroupLengths,   // 그룹당 합산 길이 — tier 단가용
     cutLengthM:  l.cutLengthM,
+    widthMm:     l.widthMm,
+    heightMm:    l.heightMm,
     material:    l.material,
     thickness:   l.thickness,
     qty:         l.qty,
