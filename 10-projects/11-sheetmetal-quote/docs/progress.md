@@ -2,7 +2,7 @@
 
 최종 업데이트: 2026-06-28
 
-> **지시6 진행중**: step1 완료 (recognizer.ts bendLengths 필드 추가), 다음은 step2 bending.ts
+> **지시6 진행중**: step2 완료 (bending.ts 절곡비 계산 모듈), 다음은 step3 estimate.ts 연결
 
 ---
 
