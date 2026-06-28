@@ -471,6 +471,13 @@ export default function ViewerPage() {
 // Results Panel
 // ---------------------------------------------------------------------------
 
+function getDensity(material: string): number {
+  const m = material.toUpperCase()
+  if (m.startsWith('SUS') || m === 'STS') return 7.93
+  if (m.startsWith('AL')) return 2.70
+  return 7.85
+}
+
 type ManualCutMethod = '레이저' | '복합기' | 'NCT' | '절단' | ''
 
 function ResultsPanel({ boxes, resultTab, onTabChange }: {
@@ -508,7 +515,13 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
       const matUnit    = mat  ? String(fetchedPricing.material_price[mat]   ?? '') : ''
       const cutUnit    = tKey ? String(fetchedPricing.cut_price_per_m[tKey] ?? '') : ''
       const pierceUnit = tKey ? String(fetchedPricing.pierce_price[tKey]    ?? '') : ''
-      return { ...prev, [id]: { weightKg: '', matUnit, cutUnit, holeCount: '', pierceUnit } }
+      const autoW = r.parts.reduce((sum, p) => {
+        const area = (p.widthMm * p.heightMm) / 1e6
+        const t = parseFloat(p.thickness.replace(/[^0-9.]/g, '')) || 0
+        const qty = parseInt(p.qty) || 1
+        return area > 0 && t > 0 ? sum + area * t * getDensity(p.material) * qty : sum
+      }, 0)
+      return { ...prev, [id]: { weightKg: autoW > 0 ? String(Math.round(autoW * 1000) / 1000) : '', matUnit, cutUnit, holeCount: '', pierceUnit } }
     })
   }, [fetchedPricing, resultTab, boxes])
 
@@ -526,7 +539,17 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
   const updateQin = (patch: Partial<typeof qin>) =>
     setQuoteInputs(prev => ({ ...prev, [currentId]: { ...qin, ...patch } }))
 
-  const 재료비 = Math.round((parseFloat(qin.weightKg) || 0) * (parseFloat(qin.matUnit) || 0))
+  const autoMaterialCost = r && fetchedPricing ? Math.round(
+    r.parts.reduce((sum, p) => {
+      const area = (p.widthMm * p.heightMm) / 1e6
+      const t = parseFloat(p.thickness.replace(/[^0-9.]/g, '')) || 0
+      const unitPrice = fetchedPricing.material_price[p.material] ?? 0
+      const qty = parseInt(p.qty) || 1
+      return area > 0 && t > 0 ? sum + area * t * getDensity(p.material) * unitPrice * qty : sum
+    }, 0)
+  ) : 0
+  const 재료비 = autoMaterialCost > 0 ? autoMaterialCost
+    : Math.round((parseFloat(qin.weightKg) || 0) * (parseFloat(qin.matUnit) || 0))
   const 절단비 = Math.round(
     totalCutM * (parseFloat(qin.cutUnit) || 0) +
     (parseInt(qin.holeCount) || 0) * (parseFloat(qin.pierceUnit) || 0)
@@ -639,7 +662,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
                 <table className="w-full border-collapse" style={{ fontSize: 10 }}>
                   <thead>
                     <tr className="bg-[#f0f3ff]">
-                      {['#','재단','↓','↑','곡','절곡비','재단m','재질','두께','수량'].map(h => (
+                      {['#','재단','↓','↑','곡','절곡비','재단m','재질','두께','가로(mm)','세로(mm)','수량'].map(h => (
                         <th key={h} className="border border-[#c3c6d7] px-1.5 py-1 text-[9px] font-bold text-[#565e74] uppercase tracking-wider text-center whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -667,6 +690,8 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
                           </td>
                           <td className="border border-[#c3c6d7] px-1.5 py-1 text-center">{p.material  || '—'}</td>
                           <td className="border border-[#c3c6d7] px-1.5 py-1 text-center">{p.thickness || '—'}</td>
+                          <td className="border border-[#c3c6d7] px-1.5 py-1 text-center tabular-nums">{p.widthMm  > 0 ? p.widthMm  : '—'}</td>
+                          <td className="border border-[#c3c6d7] px-1.5 py-1 text-center tabular-nums">{p.heightMm > 0 ? p.heightMm : '—'}</td>
                           <td className="border border-[#c3c6d7] px-1.5 py-1 text-center">{p.qty       || '—'}</td>
                         </tr>
                       )
@@ -679,7 +704,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
                       <td className="border border-[#c3c6d7] px-1.5 py-1 text-center text-[#006242] tabular-nums">
                         {totalBendCost > 0 ? `₩${Math.round(totalBendCost).toLocaleString()}` : '—'}
                       </td>
-                      <td colSpan={4} className="border border-[#c3c6d7] px-1.5 py-1 text-[9px] text-[#737686]">
+                      <td colSpan={6} className="border border-[#c3c6d7] px-1.5 py-1 text-[9px] text-[#737686]">
                         {r.unassignedBends > 0 && `미배정 ${r.unassignedBends}곡`}
                       </td>
                     </tr>
