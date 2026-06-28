@@ -547,10 +547,44 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
   onTabChange: (id: string) => void
   onClose: () => void
 }) {
-  const [manualCut,   setManualCut]   = useState<Record<string, ManualCutMethod>>({})
-  const [quoteInputs, setQuoteInputs] = useState<Record<string, {
+  const [manualCut,      setManualCut]      = useState<Record<string, ManualCutMethod>>({})
+  const [quoteInputs,    setQuoteInputs]    = useState<Record<string, {
     weightKg: string; matUnit: string; cutUnit: string; holeCount: string; pierceUnit: string
   }>>({})
+  const [fetchedPricing, setFetchedPricing] = useState<import('@/lib/estimate').PricingData | null>(null)
+
+  useEffect(() => {
+    fetch('/api/pricing')
+      .then(r => r.json())
+      .then(data => {
+        setFetchedPricing(data)
+      })
+      .catch(() => {})
+  }, [])
+
+  // 탭이 처음 열릴 때만 자동 채우기 (이미 열린 탭은 덮어쓰지 않음)
+  useEffect(() => {
+    if (!fetchedPricing || !resultTab) return
+    const box = boxes.find(b => b.id === resultTab)
+    const r = box?.recognition
+    if (!r) return
+    const id = box!.id
+
+    setQuoteInputs(prev => {
+      if (prev[id] !== undefined) return prev  // 이미 열린 탭 → 유지
+
+      const firstWithMat = r.parts.find(p => p?.material)
+      const mat  = firstWithMat?.material  ?? ''
+      const rawT = (firstWithMat?.thickness ?? '').replace(/t$/, '') // "1.5t"→"1.5", "1t"→"1"
+      const tKey = rawT && !rawT.includes('.') ? rawT + '.0' : rawT  // "1"→"1.0", "1.5"→"1.5"
+
+      const matUnit    = mat  ? String(fetchedPricing.material_price[mat]   ?? '') : ''
+      const cutUnit    = tKey ? String(fetchedPricing.cut_price_per_m[tKey] ?? '') : ''
+      const pierceUnit = tKey ? String(fetchedPricing.pierce_price[tKey]    ?? '') : ''
+
+      return { ...prev, [id]: { weightKg: '', matUnit, cutUnit, holeCount: '', pierceUnit } }
+    })
+  }, [fetchedPricing, resultTab, boxes])
 
   const boxesWithResult = boxes.filter(b => b.recognition)
   const current = boxesWithResult.find(b => b.id === resultTab) ?? boxesWithResult[0]
