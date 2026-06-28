@@ -1,26 +1,91 @@
 @import "tailwindcss";
 
+/* Google Fonts — step 2에서 next/font/google로 이전 예정 */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap');
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f9f9ff;
+  --foreground: #111c2d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ════════════════════════════════════════
+   Industrial Precision System — Design Tokens
+   ════════════════════════════════════════ */
+@theme {
+  /* ── Colors ── */
+  --color-primary:                    #004ac6;
+  --color-on-primary:                 #ffffff;
+  --color-primary-container:          #2563eb;
+  --color-on-primary-container:       #eeefff;
+  --color-inverse-primary:            #b4c5ff;
+  --color-primary-fixed:              #dbe1ff;
+  --color-primary-fixed-dim:          #b4c5ff;
+  --color-on-primary-fixed:           #00174b;
+  --color-on-primary-fixed-variant:   #003ea8;
+  --color-surface-tint:               #0053db;
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  --color-secondary:                  #565e74;
+  --color-on-secondary:               #ffffff;
+  --color-secondary-container:        #dae2fd;
+  --color-on-secondary-container:     #5c647a;
+  --color-secondary-fixed:            #dae2fd;
+  --color-secondary-fixed-dim:        #bec6e0;
+  --color-on-secondary-fixed:         #131b2e;
+  --color-on-secondary-fixed-variant: #3f465c;
+
+  --color-tertiary:                   #006242;
+  --color-on-tertiary:                #ffffff;
+  --color-tertiary-container:         #007d55;
+  --color-on-tertiary-container:      #bdffdb;
+  --color-tertiary-fixed:             #6ffbbe;
+  --color-tertiary-fixed-dim:         #4edea3;
+  --color-on-tertiary-fixed:          #002113;
+  --color-on-tertiary-fixed-variant:  #005236;
+
+  --color-error:                      #ba1a1a;
+  --color-on-error:                   #ffffff;
+  --color-error-container:            #ffdad6;
+  --color-on-error-container:         #93000a;
+
+  --color-surface:                    #f9f9ff;
+  --color-surface-dim:                #cfdaf2;
+  --color-surface-bright:             #f9f9ff;
+  --color-surface-container-lowest:   #ffffff;
+  --color-surface-container-low:      #f0f3ff;
+  --color-surface-container:          #e7eeff;
+  --color-surface-container-high:     #dee8ff;
+  --color-surface-container-highest:  #d8e3fb;
+  --color-surface-variant:            #d8e3fb;
+  --color-on-surface:                 #111c2d;
+  --color-on-surface-variant:         #434655;
+  --color-inverse-surface:            #263143;
+  --color-inverse-on-surface:         #ecf1ff;
+  --color-outline:                    #737686;
+  --color-outline-variant:            #c3c6d7;
+
+  /* ── Fonts ── */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* ── Spacing (4px base grid) ── */
+  --spacing-xs:         4px;
+  --spacing-sm:         8px;
+  --spacing-md:         16px;
+  --spacing-lg:         24px;
+  --spacing-xl:         32px;
+  --spacing-gutter:     16px;
+  --spacing-side-panel: 360px;
+
+  /* ── Border radius ── */
+  --radius-sm:   0.125rem;
+  --radius:      0.25rem;
+  --radius-md:   0.375rem;
+  --radius-lg:   0.5rem;
+  --radius-xl:   0.75rem;
+  --radius-full: 9999px;
 }
