@@ -2,6 +2,8 @@
 
 최종 업데이트: 2026-06-28
 
+> **지시6 진행중**: step1 완료 (recognizer.ts bendLengths 필드 추가), 다음은 step2 bending.ts
+
 ---
 
 ## 완성된 기능 (지시 1~5)

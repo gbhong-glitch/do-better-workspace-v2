@@ -16,6 +16,7 @@ export interface RecognizedPart {
   bendDown:    number   // 굽힘선아래로
   bendUp:      number   // 굽힘선위로
   bendTotal:   number
+  bendLengths: number[] // 각 굽힘선 길이(mm) — tier 단가 계산용
   cutLengthM:  number   // 전개도 외형선 합 (m), 절곡 없으면 0
   material:    string
   thickness:   string
@@ -332,15 +333,16 @@ export function recognizeBox(
 
   // ── 결과 조립 ─────────────────────────────────────────────────────────────
   const parts: RecognizedPart[] = labels.map(l => ({
-    cutMethod:  l.cutMethod,
-    labelText:  l.text,
-    bendDown:   l.bendDown,
-    bendUp:     l.bendUp,
-    bendTotal:  l.bendDown + l.bendUp,
-    cutLengthM: l.cutLengthM,
-    material:   l.material,
-    thickness:  l.thickness,
-    qty:        l.qty,
+    cutMethod:   l.cutMethod,
+    labelText:   l.text,
+    bendDown:    l.bendDown,
+    bendUp:      l.bendUp,
+    bendTotal:   l.bendDown + l.bendUp,
+    bendLengths: l.bendLines.map(bl => Math.round(entityLength(bl))),
+    cutLengthM:  l.cutLengthM,
+    material:    l.material,
+    thickness:   l.thickness,
+    qty:         l.qty,
   }))
 
   return {
