@@ -98,6 +98,26 @@ function entityLength(e: DrawEntity): number {
 }
 
 // ---------------------------------------------------------------------------
+// Bend line grouping key
+// (layer, 방향H/V/D, 직선좌표 2단위 반올림) → 같은 키 = 1곡
+// ---------------------------------------------------------------------------
+
+function bendKey(e: DrawLine): string {
+  const dy = e.y2 - e.y1
+  const dx = e.x2 - e.x1
+  if (Math.abs(dy) < 0.5) {
+    // 수평선: Y값으로 구분
+    return `${e.layer}|H|${Math.round((e.y1 + e.y2) / 4) * 2}`
+  }
+  if (Math.abs(dx) < 0.5) {
+    // 수직선: X값으로 구분
+    return `${e.layer}|V|${Math.round((e.x1 + e.x2) / 4) * 2}`
+  }
+  // 사선: 중점으로 구분 (실무 사선 절곡선은 드뭄)
+  return `${e.layer}|D|${Math.round((e.x1 + e.x2) / 2)}|${Math.round((e.y1 + e.y2) / 2)}`
+}
+
+// ---------------------------------------------------------------------------
 // Layer constants
 // ---------------------------------------------------------------------------
 
@@ -182,10 +202,45 @@ export function recognizeBox(
     return c ? inBbox(c.x, c.y, box) : false
   })
 
+  // ── 절곡선 수집 + collinear 그룹핑 ──────────────────────────────────────────
+  // 끝점 하나 이상이 박스 안이면 포함.
+  // (layer, 방향H/V/D, 직선좌표 2단위 반올림) 키가 같으면 1곡으로 합산.
+  interface BendGroup { isDown: boolean; totalLength: number; lines: DrawLine[]; avgY: number }
+  const bendGroupMap = new Map<string, BendGroup>()
+  const bendLinesInBox: DrawLine[] = []   // 바운딩박스 계산용 (전체 LINE 보존)
+
+  for (const e of entities) {
+    if (e.kind !== 'line') continue
+    const isDown = e.layer === BEND_DOWN
+    if (!isDown && e.layer !== BEND_UP) continue
+    if (!(inBbox(e.x1, e.y1, box) || inBbox(e.x2, e.y2, box) ||
+          inBbox((e.x1 + e.x2) / 2, (e.y1 + e.y2) / 2, box))) continue
+
+    const bl = e as DrawLine
+    bendLinesInBox.push(bl)
+
+    const key = bendKey(bl)
+    let g = bendGroupMap.get(key)
+    if (!g) {
+      g = { isDown, totalLength: 0, lines: [], avgY: 0 }
+      bendGroupMap.set(key, g)
+    }
+    g.lines.push(bl)
+    g.totalLength += entityLength(bl)
+  }
+  // 그룹별 avgY 확정 (라벨 배정용)
+  for (const g of bendGroupMap.values())
+    g.avgY = g.lines.reduce((s, l) => s + (l.y1 + l.y2) / 2, 0) / g.lines.length
+
+  let bendDownCount = 0, bendUpCount = 0
+  for (const g of bendGroupMap.values())
+    if (g.isDown) bendDownCount++; else bendUpCount++
+
   // ── 1. 세부부품 라벨 ─────────────────────────────────────────────────────
   interface CutLabel {
     cutMethod: string; text: string; x: number; y: number
     bendDown: number; bendUp: number; bendLines: DrawLine[]
+    bendGroupLengths: number[]   // 그룹별 합산 길이(mm) — tier 단가용
     cutLengthM: number; material: string; thickness: string; qty: string
   }
 
@@ -193,30 +248,25 @@ export function recognizeBox(
     .filter((e): e is DrawText => e.kind === 'text' && CUT_LAYERS.has(e.layer))
     .map(e => ({
       cutMethod: e.layer, text: e.txt, x: e.x, y: e.y,
-      bendDown: 0, bendUp: 0, bendLines: [],
+      bendDown: 0, bendUp: 0, bendLines: [], bendGroupLengths: [],
       cutLengthM: 0, material: '', thickness: '', qty: '',
     }))
     .sort((a, b) => b.y - a.y)
 
-  // ── 2. 절곡 → Y최근접 라벨 배정 ─────────────────────────────────────────
+  // ── 2. 절곡 그룹 → Y최근접 라벨 배정 ─────────────────────────────────────
   let unassigned = 0
 
-  for (const e of inBox) {
-    if (e.kind !== 'line') continue
-    const isDown = e.layer === BEND_DOWN
-    const isUp   = e.layer === BEND_UP
-    if (!isDown && !isUp) continue
-
+  for (const [, g] of bendGroupMap) {
     if (!labels.length) { unassigned++; continue }
 
-    const my = (e.y1 + e.y2) / 2
-    let best = labels[0], bestDist = Math.abs(my - best.y)
+    let best = labels[0], bestDist = Math.abs(g.avgY - best.y)
     for (let i = 1; i < labels.length; i++) {
-      const d = Math.abs(my - labels[i].y)
+      const d = Math.abs(g.avgY - labels[i].y)
       if (d < bestDist) { bestDist = d; best = labels[i] }
     }
-    if (isDown) best.bendDown++; else best.bendUp++
-    best.bendLines.push(e as DrawLine)
+    if (g.isDown) best.bendDown++; else best.bendUp++
+    for (const bl of g.lines) best.bendLines.push(bl)
+    best.bendGroupLengths.push(Math.round(g.totalLength))
   }
 
   // ── 3. 재단길이 = 절곡 바운딩박스 안 외형선 합 ──────────────────────────
@@ -273,31 +323,23 @@ export function recognizeBox(
   // ── 단품 폴백: 재단 라벨 없고 절곡/외형선이 있으면 단일 부품으로 처리 ────
   // 단품 도면(레이저/복합기/NCT/절단 텍스트 없음)에서 박스 전체를 1개 부품으로.
   if (labels.length === 0) {
-    const hasBend    = inBox.some(e => e.kind === 'line' && (e.layer === BEND_DOWN || e.layer === BEND_UP))
     const hasOutline = inBox.some(e => e.layer === OUTLINE_LYR && e.kind !== 'text')
-    if (hasBend || hasOutline) {
-      // 라벨 Y를 박스 중앙으로 설정 (SW_노트 Y근접 배정은 단일 라벨이므로 무조건 배정됨)
+    if (bendLinesInBox.length > 0 || hasOutline) {
       const fakeLbl: CutLabel = {
         cutMethod: '', text: '', x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2,
-        bendDown: 0, bendUp: 0, bendLines: [],
+        bendDown: bendDownCount, bendUp: bendUpCount, bendLines: [...bendLinesInBox],
+        bendGroupLengths: [...bendGroupMap.values()].map(g => Math.round(g.totalLength)),
         cutLengthM: 0, material: '', thickness: '', qty: '',
       }
       labels.push(fakeLbl)
+      unassigned = 0
 
-      // 미배정 절곡을 단품에 배정
-      for (const e of inBox) {
-        if (e.kind !== 'line') continue
-        if (e.layer === BEND_DOWN) { fakeLbl.bendDown++; fakeLbl.bendLines.push(e as DrawLine); unassigned-- }
-        if (e.layer === BEND_UP)   { fakeLbl.bendUp++;   fakeLbl.bendLines.push(e as DrawLine); unassigned-- }
-      }
-      unassigned = Math.max(0, unassigned)
-
-      // 재단길이 = 박스 안 외형선 전체 합 (단품이므로 절곡 바운딩박스 불필요)
+      // 재단길이 = 박스 안 외형선 전체 합
       let totalLen = 0
       for (const e of outline) totalLen += entityLength(e)
       fakeLbl.cutLengthM = Math.round(totalLen / 10) / 100
 
-      // SW_노트 재배정 (라벨이 이제 생겼으므로)
+      // SW_노트 재배정
       for (const note of notes) {
         const txt = note.txt
         const matM   = MAT_RE.exec(txt)
@@ -338,7 +380,7 @@ export function recognizeBox(
     bendDown:    l.bendDown,
     bendUp:      l.bendUp,
     bendTotal:   l.bendDown + l.bendUp,
-    bendLengths: l.bendLines.map(bl => Math.round(entityLength(bl))),
+    bendLengths: l.bendGroupLengths,   // 그룹당 합산 길이 — tier 단가용
     cutLengthM:  l.cutLengthM,
     material:    l.material,
     thickness:   l.thickness,
@@ -347,7 +389,7 @@ export function recognizeBox(
 
   return {
     parts,
-    totalBends:      parts.reduce((s, p) => s + p.bendTotal, 0) + unassigned,
+    totalBends:      bendGroupMap.size,   // collinear 그룹 수 = 실제 곡수
     unassignedBends: unassigned,
     specialFeatures,
     pipes,

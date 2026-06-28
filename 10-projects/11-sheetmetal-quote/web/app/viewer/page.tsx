@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, Fragment } from 'react'
 import type { ViewerData, DrawEntity, DrawArc } from '@/lib/dxf-viewer'
 import { recognizeBox, type RecognitionResult } from '@/lib/recognizer'
 import { calcBendCost } from '@/lib/bending'
@@ -10,14 +10,14 @@ import { calcBendCost } from '@/lib/bending'
 // ---------------------------------------------------------------------------
 
 const KNOWN_COLORS: Record<string, string> = {
-  '외형선':      '#1D4ED8',
-  '굽힘선아래로': '#DC2626',
-  '굽힘선위로':  '#EA580C',
-  'SW_노트':    '#6B7280',
-  'SW_모델뷰':  '#9CA3AF',
-  '0':          '#374151',
+  '외형선':      '#93c5fd',   // blue-300
+  '굽힘선아래로': '#fca5a5',   // red-300
+  '굽힘선위로':  '#fdba74',   // orange-300
+  'SW_노트':    '#94a3b8',   // slate-400
+  'SW_모델뷰':  '#475569',   // slate-600
+  '0':          '#64748b',   // slate-500
 }
-const PALETTE = ['#7C3AED','#059669','#D97706','#DB2777','#0891B2','#65A30D','#0369A1','#BE185D']
+const PALETTE = ['#a78bfa','#34d399','#fbbf24','#f472b6','#38bdf8','#a3e635','#67e8f9','#fb7185']
 const layerColor = (l: string, i: number) => KNOWN_COLORS[l] ?? PALETTE[i % PALETTE.length]
 
 const CUT_COLOR: Record<string, string> = {
@@ -119,10 +119,13 @@ export default function ViewerPage() {
   const screenToDxf = useCallback((clientX: number, clientY: number): Pt | null => {
     const el = svgRef.current
     if (!el || !dataRef.current) return null
-    const rect = el.getBoundingClientRect()
-    const svgX = vboxRef.current.x + (clientX - rect.left) / rect.width  * vboxRef.current.w
-    const svgY = vboxRef.current.y + (clientY - rect.top)  / rect.height * vboxRef.current.h
-    return { x: svgX, y: kRef.current - svgY }
+    const ctm = el.getScreenCTM()
+    if (!ctm) return null
+    const pt = el.createSVGPoint()
+    pt.x = clientX
+    pt.y = clientY
+    const svgPt = pt.matrixTransform(ctm.inverse())
+    return { x: svgPt.x, y: kRef.current - svgPt.y }
   }, [])
 
   // ── Fit view ──────────────────────────────────────────────────────────────
@@ -277,8 +280,8 @@ export default function ViewerPage() {
     return (
       <rect
         x={bx} y={by} width={bw} height={bh}
-        fill={preview ? 'rgba(59,130,246,0.04)' : 'rgba(59,130,246,0.08)'}
-        stroke="#3B82F6" strokeWidth={2}
+        fill={preview ? 'rgba(96,165,250,0.06)' : 'rgba(96,165,250,0.12)'}
+        stroke="#60a5fa" strokeWidth={2}
         vectorEffect="non-scaling-stroke"
         strokeDasharray={dashed ? '8 4' : undefined}
       />
@@ -451,7 +454,7 @@ export default function ViewerPage() {
               <button
                 onClick={() => setShowResults(v => !v)}
                 className={`ml-auto flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors
-                  ${showResults ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100 border border-gray-200'}`}
+                  ${showResults ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100 border border-gray-200'}`}
               >
                 인식 결과 {showResults ? '닫기' : `보기 (${boxes.filter(b => b.recognition).length})`}
               </button>
@@ -471,7 +474,7 @@ export default function ViewerPage() {
               onMouseDown={onMouseDown}
               style={{
                 display: 'block',
-                background: '#ffffff',
+                background: '#0f172a',
                 cursor: mode === 'select' ? 'crosshair' : panning ? 'grabbing' : 'grab',
               }}
             >
@@ -484,7 +487,7 @@ export default function ViewerPage() {
                   .map((e, i) => <EntityEl key={i} e={e} color={colors[e.layer] ?? '#374151'} />)}
 
                 {/* Saved selection boxes (rect only, labels rendered outside) */}
-                {boxes.map(b => boxRect(b))}
+                {boxes.map(b => <Fragment key={b.id}>{boxRect(b)}</Fragment>)}
 
                 {/* Active (in-progress) box */}
                 {activeBox && boxRect(activeBox, true, true)}
@@ -502,7 +505,7 @@ export default function ViewerPage() {
                     x={leftX + labelSize * 0.3}
                     y={topY + labelSize * 1.1}
                     fontSize={labelSize}
-                    fill="#1D4ED8"
+                    fill="#93c5fd"
                     fontWeight="bold"
                     fontFamily="sans-serif"
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
@@ -547,7 +550,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
   const isSinglePart = r && r.parts.length === 1 && r.parts[0].cutMethod === ''
 
   return (
-    <div className="shrink-0 border-t border-gray-200 bg-white flex flex-col" style={{ height: 240 }}>
+    <div className="shrink-0 border-t border-gray-200 bg-white flex flex-col" style={{ height: 300 }}>
       {/* Tab bar */}
       <div className="flex items-center border-b border-gray-100 bg-gray-50 overflow-x-auto shrink-0">
         {boxesWithResult.map(b => (
@@ -555,7 +558,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
             key={b.id}
             onClick={() => onTabChange(b.id)}
             className={`px-3 py-1.5 text-xs whitespace-nowrap border-r border-gray-200 transition-colors
-              ${b.id === current?.id ? 'bg-white text-indigo-700 font-medium border-b border-b-white -mb-px' : 'text-gray-500 hover:bg-gray-100'}`}
+              ${b.id === current?.id ? 'bg-white text-blue-700 font-medium border-b border-b-white -mb-px' : 'text-gray-500 hover:bg-gray-100'}`}
           >{b.name}</button>
         ))}
         <button onClick={onClose} className="ml-auto px-3 text-gray-400 hover:text-gray-700 text-xs shrink-0">✕ 닫기</button>
@@ -563,7 +566,35 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
 
       {/* Content */}
       {r && current ? (
-        <div className="flex-1 overflow-auto p-3 text-xs">
+        <div className="flex-1 overflow-auto text-xs">
+
+          {/* 요약 카드 */}
+          {(() => {
+            const totalBendCost = r.parts.reduce((s, p) => s + calcBendCost(p.bendLengths), 0)
+            const totalCutM     = Math.round(r.parts.reduce((s, p) => s + p.cutLengthM, 0) * 100) / 100
+            return (
+              <div className="flex gap-2 px-3 pt-3 pb-2 border-b border-gray-100">
+                <div className="flex-1 rounded-lg p-2.5 bg-emerald-50">
+                  <p className="text-[10px] font-medium text-emerald-600 uppercase tracking-wide">절곡비</p>
+                  <p className="text-lg font-bold text-emerald-700 mt-0.5 leading-none">
+                    {totalBendCost > 0 ? totalBendCost.toLocaleString() + '원' : '-'}
+                  </p>
+                </div>
+                <div className="flex-1 rounded-lg p-2.5 bg-blue-50">
+                  <p className="text-[10px] font-medium text-blue-600 uppercase tracking-wide">총 절곡수</p>
+                  <p className="text-lg font-bold text-blue-700 mt-0.5 leading-none">{r.totalBends}곡</p>
+                </div>
+                <div className="flex-1 rounded-lg p-2.5 bg-slate-50">
+                  <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">재단길이</p>
+                  <p className="text-lg font-bold text-slate-700 mt-0.5 leading-none">
+                    {totalCutM > 0 ? totalCutM + 'm' : '-'}
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
+
+          <div className="p-3">
 
           {/* 단품 도면 안내 + 재단방식 수동 입력 */}
           {isSinglePart && (
@@ -691,6 +722,7 @@ function ResultsPanel({ boxes, resultTab, onTabChange, onClose }: {
             )}
           </div>
 
+          </div>{/* p-3 */}
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-gray-400 text-xs">

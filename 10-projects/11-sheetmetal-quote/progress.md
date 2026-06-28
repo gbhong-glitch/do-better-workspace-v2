@@ -8,9 +8,18 @@
 - UI 디자인 핵심 결정: 전체 다크 금지. 도면 미리보기 캔버스만 다크(#0f172a), 입력·단가·BOM·합계 작업 패널은 밝은 배경(SolidWorks/AutoCAD 방식). 출력(PDF·인쇄)은 흰 배경.
 - Stitch 디자인을 web 프로젝트에 3단계로 구현 완료: globals.css 디자인토큰 → layout.tsx 헤더/폰트 → page.tsx 좌 다크캔버스+우 밝은패널 분할레이아웃. localhost:3000에서 실제 화면 확인함.
 
+## 절곡 인식 규칙 확정 (2026-06-28)
+
+- 굽힘선 LINE을 (방향 레이어 + 직선위치) 키로 그룹핑, 그룹 1개 = 1곡
+- 같은 직선+같은 방향(collinear, 캐드 구름표시) → 1곡으로 합침
+- 같은 직선이라도 방향(위로/아래로) 다르면 → 별개 곡 (반대 절곡)
+- `bendKey()` 헬퍼 구현, `totalBends=bendGroupMap.size`, 부품별 bendDown/bendUp도 그룹 수
+- `bendGroupLengths`로 그룹당 합산 길이 저장 (tier 단가용)
+- 검증: 연결형 하부장 커버판-01 LINE 12개 → 8곡 정답 일치
+
 ## 다음 할 일
 
-- 실제 DXF 파일 업로드 동작 테스트 → 견적 계산 버튼 연결 → 단가표(pricing_seed/bending_pricing) 연동
+- zoom 기준점 수정(onWheel), 레이저/복합기 견적금액 연결
 
 ## 참고
 
