@@ -312,44 +312,25 @@ export function recognizeBox(
   // ── 2. 절곡 그룹 → 품명 기준 부품 배정 ──────────────────────────────────────
   // labels[i] === nameAnchors[i] (품명 경로): anchorIdx = labelIdx 직결.
   // 품명 없는 경우(폴백): 기존 2D거리 배정 유지.
+  const outline = inBox.filter(e => e.layer === OUTLINE_LYR && e.kind !== 'text')
   let unassigned = 0
 
   if (labels.length > 0) {
     if (nameAnchors.length > 0) {
-      // ── 새 배정: 품명 기준 ───────────────────────────────────────────────────
-
-      // B. X 중앙값 계산 (좌/우 존 분할 기준)
-      const avgXList = [...bendGroupMap.values()].map(g => g.avgX).sort((a, b) => a - b)
-      const xMed = avgXList[Math.floor(avgXList.length / 2)] ?? 0
-
-      // C. 굽힘선 그룹 → 2D 최근접 품명 배정
-      const groupToAnchorIdx = new Map<string, number>()
+      // ── 굽힘선 그룹 → nameAnchor 2D 최근접 직접 배정 ────────────────────────
       for (const [key, g] of bendGroupMap) {
-        const zone = g.avgX < xMed ? 'L' : 'R'
-        const zonePool = nameAnchors
-          .map((a, idx) => ({ a, idx }))
-          .filter(({ a }) => (a.x < xMed ? 'L' : 'R') === zone)
-        const pool = zonePool.length > 0 ? zonePool : nameAnchors.map((a, idx) => ({ a, idx }))
-
-        const best = pool.reduce((b, c) =>
-          Math.hypot(g.avgX - c.a.x, g.avgY - c.a.y) <
-          Math.hypot(g.avgX - b.a.x, g.avgY - b.a.y) ? c : b
-        )
-        groupToAnchorIdx.set(key, best.idx)
-        console.log(TAG, '품명배정(2D)', key,
-          `avgX=${g.avgX.toFixed(1)} avgY=${g.avgY.toFixed(1)}`,
-          `dist=${Math.hypot(g.avgX - best.a.x, g.avgY - best.a.y).toFixed(1)}`,
-          `→ 품명:"${best.a.name}"`)
-      }
-
-      // D 제거: labels[i] === nameAnchors[i] 이므로 anchorIdx가 곧 labelIdx
-
-      // E. 라벨에 크레딧 (anchorIdx = labelIdx 직결)
-      for (const [key, g] of bendGroupMap) {
-        const li = groupToAnchorIdx.get(key)!
-        const lbl = labels[li]
-        console.log(TAG, '최종배정', key,
-          g.isDown ? '▼아래로' : '▲위로', `→ 품명:"${lbl.partName}"`)
+        const cx = g.avgX, cy = g.avgY
+        let bestIdx = 0
+        let bestDist = Math.hypot(cx - nameAnchors[0].x, cy - nameAnchors[0].y)
+        for (let ai = 1; ai < nameAnchors.length; ai++) {
+          const d = Math.hypot(cx - nameAnchors[ai].x, cy - nameAnchors[ai].y)
+          if (d < bestDist) { bestDist = d; bestIdx = ai }
+        }
+        const lbl = labels[bestIdx]
+        console.log(TAG, '최종배정(2D직접)', key,
+          g.isDown ? '▼아래로' : '▲위로',
+          `avgX=${cx.toFixed(1)} avgY=${cy.toFixed(1)} dist=${bestDist.toFixed(1)}`,
+          `→ 품명:"${lbl.partName}"`)
         if (g.isDown) lbl.bendDown++; else lbl.bendUp++
         for (const bl of g.lines) lbl.bendLines.push(bl)
         lbl.bendGroupLengths.push(Math.round(g.totalLength))
@@ -427,7 +408,6 @@ export function recognizeBox(
   }
 
   // ── 3. 재단길이 = 절곡 바운딩박스 안 외형선 합 ──────────────────────────
-  const outline = inBox.filter(e => e.layer === OUTLINE_LYR && e.kind !== 'text')
 
   for (const lbl of labels) {
     if (!lbl.bendLines.length) continue
