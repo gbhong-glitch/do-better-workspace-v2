@@ -230,7 +230,7 @@ P4 자동생성 3단계 완료 - bend-sequence.ts(펼침여유 계산+면배정+
 | 1단계 ✅ | `samples/P4/` | .P4 예제 21개 + PDF 매뉴얼 보관 |
 | 2단계 ✅ | `lib/p4/dxf-bend-parser.ts` | SW_TABLEANNOTATION_0 BOM 파싱 + 굽힘선 그룹 추출 + 위치 기반 매칭 |
 | 3단계 ✅ | `lib/p4/bend-sequence.ts` | 평판 bbox 계산 + L값 산출 + 4면 배정 + 절곡 순서 결정 |
-| 4단계 🔜 | `lib/p4/p4-generator.ts` | P4 텍스트 생성 (COD/DIM/REF/MCM/POS/ROT+BEN/END) |
+| 4단계 ✅ | `lib/p4/p4-generator.ts` | P4 텍스트 생성 (COD/DIM/REF/MCM/POS/ROT+BEN/END) |
 | 5단계 🔜 | UI 연결 | 결과 화면 "P4 생성" 버튼 + 미리보기 + 다운로드 |
 
 ### 검증 결과 (하부장 커버판-02.DXF, 8곡)
@@ -240,3 +240,48 @@ P4 자동생성 3단계 완료 - bend-sequence.ts(펼침여유 계산+면배정+
 - 각 면 내측(L=30.6mm) → 외측(L=14.2mm) 순서
 - 전개도 치수: 1001.6mm × 359.6mm
 - API: `POST /api/p4-parse` → `{ bom, bendGroups, bendSequence }` 반환
+
+---
+
+## 2026-06-30 4단계 P4 generator 검증 결과
+
+`p4-generator.ts`를 예제 21개와 한 줄씩 비교. 고정값: material=SPCC, thicknessMm=1.2, partName=하부장_커버판-02, finishedX=940, finishedZ=299.
+
+### 생성 P4 텍스트 (요약)
+```
+COD: '하부장_커버판-02'
+DIM: X 940 Z 299 S 1.200
+REF: X1 470.00 Z1 149.50 X2 470.00 Z2 149.50 X3 500.60 BZ_BACK
+MCM: QSU 30.00 QSD 30.00  MNP_SPEED 30.00
+POS: CENT_FUNC 1 TURN_AROUND  SPEED 60.00 CON_SPEED 60
+
+ROT: S 1  SPEED 30.00 BLX 4 BL 933.00
+   BEN-: L 30.6
+   BEN-: L 14.2
+... (S 2~4 동일)
+END:  SPEED 60.00
+```
+
+### 항목별 신뢰도
+
+| 항목 | 신뢰도 | 근거 |
+|---|---|---|
+| `COD: 'name'` 형식 | **확정** | 예제 전체 일치 |
+| `DIM S` 3자리 고정소수점 | **확정** | 예제 전체 일치 |
+| DIM X, Z trailing zero 제거 | **확정** | 예제 전체 일치 |
+| `BEN-:` = 아래 / `BEN:` = 위 | **확정** | 예제 전체 일치 |
+| BEN 3칸 들여쓰기 | **확정** | 예제 전체 일치 |
+| 90°일 때 A 생략 | **확정** | 예제 전체 일치 |
+| `END:  SPEED 60.00` (공백 2개) | **확정** | HPMN 등 다수 일치 |
+| `CENT_FUNC 1`, `TURN_AROUND` | **확정** | 4면 부품 예제 전체 |
+| X1 = X/2, Z1 = Z/2 | **근사** | 0~1.27mm 오차 (기계 캘리브레이션) |
+| X3 = X1 + maxL | **추측** | HPMN 단순 3예제만 성립(-0.4~0.6mm), MUMS·RWSS 불일치 |
+| BL = X - 7mm 내림 | **추측** | 예제 범위 6~18mm, 7mm는 X 500~800 구간에서만 일관 |
+| MNP_SPEED = 30 | **추측** | 예제마다 10~60 사용, 기계·재질 의존 |
+| BZ_BACK | **추측** | MUMS·RWSS 일부 BZ_FRONT 사용 |
+
+### 실기 전 작업자 확인 항목
+1. **X3** (REF 바텀게이지 위치) — 기계에서 실측 후 조정
+2. **BL** (블레이드 길이) — 사용 금형 스팬에 따라 ±3mm 조정
+3. **MNP_SPEED** — 재질·두께별 심플라인 표준값 확인
+4. **BZ_BACK/FRONT** — 기계 기준 방향 확인
