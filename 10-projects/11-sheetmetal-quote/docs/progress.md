@@ -231,7 +231,7 @@ P4 자동생성 3단계 완료 - bend-sequence.ts(펼침여유 계산+면배정+
 | 2단계 ✅ | `lib/p4/dxf-bend-parser.ts` | SW_TABLEANNOTATION_0 BOM 파싱 + 굽힘선 그룹 추출 + 위치 기반 매칭 |
 | 3단계 ✅ | `lib/p4/bend-sequence.ts` | 평판 bbox 계산 + L값 산출 + 4면 배정 + 절곡 순서 결정 |
 | 4단계 ✅ | `lib/p4/p4-generator.ts` | P4 텍스트 생성 (COD/DIM/REF/MCM/POS/ROT+BEN/END) |
-| 5단계 🔜 | UI 연결 | 결과 화면 "P4 생성" 버튼 + 미리보기 + 다운로드 |
+| 5단계 ✅ | UI 연결 | P4 생성 페이지 + nav 링크 + 다운로드, 브라우저 동작 확인 완료 |
 
 ### 검증 결과 (하부장 커버판-02.DXF, 8곡)
 - BOM: A~H 8행 전부 추출 (방향=아래, 각도=90°, 반경=0.1mm)
@@ -285,6 +285,15 @@ END:  SPEED 60.00
 2. **BL** (블레이드 길이) — 사용 금형 스팬에 따라 ±3mm 조정
 3. **MNP_SPEED** — 재질·두께별 심플라인 표준값 확인
 4. **BZ_BACK/FRONT** — 기계 기준 방향 확인
+
+---
+
+## 2026-06-30 5단계 P4 UI 연결 완료 (브라우저 동작 확인)
+
+- `app/api/p4-generate/route.ts` — POST 엔드포인트 신규 생성 (커밋 90ef68f)
+- `app/p4/page.tsx` — P4 생성 전용 페이지 신규 생성 (커밋 fa80075)
+- `app/layout.tsx` — 상단 nav에 "P4 생성" 링크 추가 (커밋 fa80075)
+- 브라우저 테스트: 하부장 커버판-02.DXF 업로드 → P4 생성 → `.P4` 다운로드 정상 동작, samples/P4 예제 형식 일치 확인
 
 ---
 
