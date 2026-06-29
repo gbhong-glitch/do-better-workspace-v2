@@ -1,9 +1,11 @@
 'use client'
 
 import { useRef, useState, useEffect, useCallback, Fragment } from 'react'
+import { useRouter } from 'next/navigation'
 import type { ViewerData, DrawEntity, DrawArc } from '@/lib/dxf-viewer'
 import { recognizeBox, type RecognitionResult } from '@/lib/recognizer'
 import { calcBendCost } from '@/lib/bending'
+import type { BendMode, SurfaceType } from '@/lib/estimate'
 
 // ---------------------------------------------------------------------------
 // Layer colors
@@ -485,11 +487,16 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
   resultTab: string | null
   onTabChange: (id: string) => void
 }) {
+  const router = useRouter()
   const [manualCut,      setManualCut]      = useState<Record<string, ManualCutMethod>>({})
   const [quoteInputs,    setQuoteInputs]    = useState<Record<string, {
     weightKg: string; matUnit: string; cutUnit: string; holeCount: string; pierceUnit: string
   }>>({})
   const [fetchedPricing, setFetchedPricing] = useState<import('@/lib/estimate').PricingData | null>(null)
+  const [bendMode,       setBendMode]       = useState<BendMode>('P4')
+  const [surfaceType,    setSurfaceType]    = useState<SurfaceType>('분체도장')
+  const [generating,     setGenerating]     = useState(false)
+  const [genError,       setGenError]       = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/pricing')
@@ -497,6 +504,31 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
       .then(data => { setFetchedPricing(data) })
       .catch(() => {})
   }, [])
+
+  const handleGenEstimate = async () => {
+    const assemblies = boxes
+      .filter(b => b.recognition && b.recognition.parts.length > 0)
+      .map(b => ({ name: b.name, parts: b.recognition!.parts }))
+    if (!assemblies.length) { setGenError('인식된 조립체가 없습니다.'); return }
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const res = await fetch('/api/estimate-multi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assemblies, bendMode, surfaceType }),
+      })
+      const result = await res.json()
+      if (!res.ok) { setGenError(result.error ?? '견적 생성 실패'); return }
+      sessionStorage.removeItem('estimateResult')
+      sessionStorage.setItem('estimateMultiResult', JSON.stringify(result))
+      router.push('/result')
+    } catch (err) {
+      setGenError(String(err))
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   // 탭이 처음 열릴 때만 자동 채우기
   useEffect(() => {
@@ -574,6 +606,27 @@ function ResultsPanel({ boxes, resultTab, onTabChange }: {
             <span className="text-[#006242]">절곡 ₩{Math.round(totalBendCost).toLocaleString()}</span>
           </div>
         )}
+
+        {/* 견적서 생성 설정 */}
+        <div className="mt-3 flex gap-2 items-center flex-wrap">
+          <select value={bendMode} onChange={e => setBendMode(e.target.value as BendMode)}
+            className="border border-[#c3c6d7] rounded px-1.5 py-1 text-[10px] bg-[#f9f9ff] text-[#111c2d] outline-none focus:border-[#004ac6]">
+            <option value="P4">P4 패널벤더</option>
+            <option value="general">일반 절곡</option>
+          </select>
+          <select value={surfaceType} onChange={e => setSurfaceType(e.target.value as SurfaceType)}
+            className="border border-[#c3c6d7] rounded px-1.5 py-1 text-[10px] bg-[#f9f9ff] text-[#111c2d] outline-none focus:border-[#004ac6]">
+            <option value="분체도장">분체도장</option>
+            <option value="도장">도장</option>
+            <option value="도금">도금</option>
+            <option value="없음">후처리 없음</option>
+          </select>
+          <button onClick={handleGenEstimate} disabled={generating}
+            className="flex-1 bg-[#004ac6] text-white text-[10px] font-bold px-3 py-1.5 rounded hover:bg-[#003a9e] transition-colors disabled:opacity-50 whitespace-nowrap">
+            {generating ? '생성 중…' : '견적서 생성 →'}
+          </button>
+        </div>
+        {genError && <p className="mt-1 text-[10px] text-red-500">{genError}</p>}
       </div>
 
       {/* Tab bar */}
