@@ -134,8 +134,8 @@ export default function ResultPage() {
         </div>
       )}
 
-      {/* 액션 버튼 */}
-      <div className="flex gap-3">
+      {/* 액션 버튼 — 인쇄 시 숨김 */}
+      <div className="flex gap-3 print:hidden">
         <button
           onClick={() => router.push('/')}
           className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-colors"
@@ -143,9 +143,8 @@ export default function ResultPage() {
           ← 새 견적
         </button>
         <button
-          disabled
-          className="flex-1 bg-gray-200 text-gray-400 py-2.5 rounded-lg font-medium cursor-not-allowed"
-          title="PDF 다운로드 준비 중"
+          onClick={() => window.print()}
+          className="flex-1 bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors"
         >
           PDF 다운로드
         </button>
