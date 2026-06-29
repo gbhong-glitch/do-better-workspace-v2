@@ -11,6 +11,7 @@
  */
 
 import type { ParsedDxf } from './dxf-parser'
+import type { RecognizedPart } from './recognizer'
 import { calcBendCost } from './bending'
 
 // ---------------------------------------------------------------------------
@@ -96,8 +97,47 @@ export interface EstimateResult {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-part types (부품별 견적)
+// ---------------------------------------------------------------------------
+
+export interface PartEstimateResult {
+  partName:    string
+  qty:         number
+  material:    string
+  thicknessMm: number | null
+  weightKg:    number
+  breakdown:   EstimateBreakdown
+  unitPrice:   number
+  totalPrice:  number
+  detail:      EstimateDetail
+  warnings:    string[]
+}
+
+export interface AssemblyEstimateResult {
+  assemblyName: string
+  parts:        PartEstimateResult[]
+  subtotal:     number
+}
+
+export interface MultiPartEstimateResult {
+  type:        'multi'
+  assemblies:  AssemblyEstimateResult[]
+  grandTotal:  number
+  bendMode:    BendMode
+  surfaceType: SurfaceType
+  warnings:    string[]
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function getDensity(material: string): number {
+  const m = material.toUpperCase()
+  if (m.startsWith('SUS') || m === 'STS') return 7.93
+  if (m.startsWith('AL')) return 2.70
+  return 7.85
+}
 
 function findThicknessKey(section: Record<string, number>, thicknessMm: number): string {
   const keys = Object.keys(section).filter(k => /^\d+(\.\d+)?$/.test(k))
@@ -216,5 +256,146 @@ export function calculateEstimate(input: EstimateInput): EstimateResult {
       mgmtRatePct:     mgmtRate * 100,
       marginRatePct:   marginRate * 100,
     },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Per-part estimate (뷰어 RecognizedPart → 부품 1종 견적)
+// ---------------------------------------------------------------------------
+
+export function calculatePartEstimate(
+  part:        RecognizedPart,
+  pricing:     PricingData,
+  bendMode:    BendMode,
+  surfaceType: SurfaceType,
+): PartEstimateResult {
+  const warnings: string[] = []
+
+  const rawT  = part.thickness.replace(/[^0-9.]/g, '')
+  const tMm   = rawT ? parseFloat(rawT) : null
+  const qty   = parseInt(part.qty) || 1
+  const mat   = part.material
+
+  // 재료비 — bbox 면적 × 두께 × 비중
+  const matUnit  = mat ? (pricing.material_price[mat] ?? 0) : 0
+  if (!mat) warnings.push(`${part.partName}: 재질 미검출 → 재료비 0`)
+  const areaMm2  = part.widthMm * part.heightMm
+  const weightKg = areaMm2 > 0 && tMm && tMm > 0
+    ? Math.round(areaMm2 / 1e6 * tMm * getDensity(mat) * 1000) / 1000
+    : 0
+  const materialCost = Math.round(weightKg * matUnit)
+
+  // 절단비
+  const cutM = part.cutLengthM
+  let cutUnit = 0, pierceUnit = 0
+  if (tMm) {
+    const tKey = findThicknessKey(pricing.cut_price_per_m, tMm)
+    cutUnit    = tKey ? (pricing.cut_price_per_m[tKey] ?? 0) : 0
+    pierceUnit = tKey ? (pricing.pierce_price[tKey]    ?? 0) : 0
+  } else {
+    warnings.push(`${part.partName}: 두께 미검출 → 절단 단가 0`)
+  }
+  const cutCost     = Math.round(cutM * cutUnit)
+  const pierceCost  = 0  // 구멍수는 부품별 미지원
+  const cuttingCost = cutCost + pierceCost
+
+  // 절곡비
+  const bends      = part.bendTotal
+  const bendInfo   = pricing.bend_price[bendMode] ?? { setup: 0, per_m: 0 }
+  const setupUnit  = bendInfo.setup  ?? 0
+  const perMUnit   = bendInfo.per_m  ?? 0
+  let bendSetupCost  = 0
+  let bendLengthCost = 0
+  if (part.bendLengths.length > 0) {
+    bendLengthCost = Math.round(calcBendCost(part.bendLengths))
+  } else {
+    bendSetupCost = Math.round(bends * setupUnit)
+  }
+  const bendCost = bendSetupCost + bendLengthCost
+
+  // 후처리비 — bbox 양면
+  const surfaceAreaM2 = areaMm2 > 0 ? (areaMm2 * 2) / 1e6 : 0
+  const surfUnit      = pricing.surface_price[surfaceType] ?? 0
+  const surfaceCost   = Math.round(surfaceAreaM2 * surfUnit)
+
+  // 소계 → 관리비 · 마진
+  const subtotal   = materialCost + cuttingCost + bendCost + surfaceCost
+  const mgmtRate   = (pricing.overhead.management_rate ?? 0) / 100
+  const marginRate = (pricing.overhead.margin_rate     ?? 0) / 100
+  const mgmtCost   = Math.round(subtotal * mgmtRate)
+  const marginCost = Math.round(subtotal * marginRate)
+  const unitPrice  = subtotal + mgmtCost + marginCost
+  const totalPrice = unitPrice * qty
+
+  const bendLengthTotal = part.bendLengths.reduce((s, l) => s + l, 0)
+
+  return {
+    partName:    part.partName || part.labelText || '부품',
+    qty,
+    material:    mat || '미검출',
+    thicknessMm: tMm,
+    weightKg,
+    breakdown: {
+      재료비:     materialCost,
+      절단비:     cutCost,
+      피어싱비:   pierceCost,
+      절곡비:     bendCost,
+      특수가공비: 0,
+      후처리비:   surfaceCost,
+      소계:       subtotal,
+      관리비:     mgmtCost,
+      마진:       marginCost,
+    },
+    unitPrice,
+    totalPrice,
+    detail: {
+      weightKg,
+      matUnitPerKg:  matUnit,
+      cutM:          Math.round(cutM * 1000) / 1000,
+      cutUnitPerM:   cutUnit,
+      pierceUnit,
+      holes:         0,
+      bends,
+      bendLengthM:   Math.round(bendLengthTotal / 1000 * 1000) / 1000,
+      bendSetupUnit: setupUnit,
+      bendPerMUnit:  perMUnit,
+      bendSetupCost,
+      bendLengthCost,
+      surfaceAreaM2: Math.round(surfaceAreaM2 * 10000) / 10000,
+      surfUnitPerM2: surfUnit,
+      mgmtRatePct:   mgmtRate * 100,
+      marginRatePct: marginRate * 100,
+    },
+    warnings,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-assembly estimate (여러 조립체 묶음)
+// ---------------------------------------------------------------------------
+
+export function calculateMultiPartEstimate(
+  assemblies:  Array<{ name: string; parts: RecognizedPart[] }>,
+  pricing:     PricingData,
+  bendMode:    BendMode,
+  surfaceType: SurfaceType,
+): MultiPartEstimateResult {
+  const allWarnings: string[] = []
+  const assemblyResults: AssemblyEstimateResult[] = assemblies.map(asm => {
+    const partResults = asm.parts.map(p =>
+      calculatePartEstimate(p, pricing, bendMode, surfaceType)
+    )
+    partResults.forEach(p => allWarnings.push(...p.warnings))
+    const subtotal = partResults.reduce((s, p) => s + p.totalPrice, 0)
+    return { assemblyName: asm.name, parts: partResults, subtotal }
+  })
+  const grandTotal = assemblyResults.reduce((s, a) => s + a.subtotal, 0)
+  return {
+    type:       'multi',
+    assemblies: assemblyResults,
+    grandTotal,
+    bendMode,
+    surfaceType,
+    warnings:   allWarnings,
   }
 }
