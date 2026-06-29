@@ -135,7 +135,7 @@ export interface MultiPartEstimateResult {
 function getDensity(material: string): number {
   const m = material.toUpperCase()
   if (m.startsWith('SUS') || m === 'STS') return 7.93
-  if (m.startsWith('AL')) return 2.70
+  if (m.startsWith('AL')) return 2.71
   return 7.85
 }
 
