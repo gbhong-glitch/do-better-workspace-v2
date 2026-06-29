@@ -285,3 +285,37 @@ END:  SPEED 60.00
 2. **BL** (블레이드 길이) — 사용 금형 스팬에 따라 ±3mm 조정
 3. **MNP_SPEED** — 재질·두께별 심플라인 표준값 확인
 4. **BZ_BACK/FRONT** — 기계 기준 방향 확인
+
+---
+
+## 5단계 작업 계획 — P4 UI 연결
+
+### 새로 만드는 파일 (2개)
+
+| 파일 | 역할 |
+|---|---|
+| `web/app/p4/page.tsx` | P4 생성 전용 페이지. DXF 업로드 → `/api/p4-parse` 호출 → 파라미터 입력(품명/재질/두께/완성품X·Z) → `/api/p4-generate` 호출 → P4 텍스트 미리보기(monospace textarea) → `.P4` 다운로드 |
+| `web/app/api/p4-generate/route.ts` | POST 엔드포인트. `{ bendSequence, partName, material, thicknessMm, finishedXMm, finishedZMm }` 수신 → `generateP4()` 호출 → `{ p4Text }` 반환 |
+
+### 수정하는 파일 (1개)
+
+| 파일 | 변경 내용 |
+|---|---|
+| `web/app/layout.tsx` | 상단 nav에 `<a href="/p4">P4 생성</a>` 링크 추가 |
+
+### 건드리지 않는 파일
+- `web/app/api/p4-parse/route.ts` — 기존 응답(`{ bom, bendGroups, bendSequence, warnings }`) 그대로 재사용
+- `web/lib/p4/dxf-bend-parser.ts` — 변경 없음
+- `web/lib/p4/p4-generator.ts` — 변경 없음 (p4-generate route에서 import만)
+
+### 화면 흐름
+```
+DXF 업로드
+  → POST /api/p4-parse → { bendGroups, bendSequence }
+  → 클라이언트: inner bend midX/midY 차이로 finishedX/Z 계산
+  → 사용자 입력: 품명(파일명 자동), 재질(SPCC 기본), 두께(1.2 기본), X/Z(수정 가능)
+  → "P4 생성" 버튼
+  → POST /api/p4-generate → { p4Text }
+  → monospace textarea 미리보기
+  → "다운로드 .P4" → Blob 저장
+```
