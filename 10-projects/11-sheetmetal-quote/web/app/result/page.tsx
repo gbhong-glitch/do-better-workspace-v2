@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { EstimateResult, MultiPartEstimateResult, PartEstimateResult } from '@/lib/estimate'
+import { exportEstimateToExcel } from '@/lib/export-excel'
 
 const KRW = (n: number) => '₩' + n.toLocaleString('ko-KR')
 
@@ -55,10 +56,12 @@ function MultiPartView({
   result,
   onBack,
   onPrint,
+  onExcel,
 }: {
   result: MultiPartEstimateResult
   onBack: () => void
   onPrint: () => void
+  onExcel: () => void
 }) {
   return (
     <div className="max-w-4xl mx-auto w-full px-4 py-8 flex flex-col gap-6">
@@ -120,6 +123,10 @@ function MultiPartView({
         <button onClick={onBack}
           className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-colors">
           ← 뷰어로
+        </button>
+        <button onClick={onExcel}
+          className="flex-1 bg-green-600 text-white py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors">
+          엑셀 다운로드
         </button>
         <button onClick={onPrint}
           className="flex-1 bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
@@ -265,6 +272,7 @@ export default function ResultPage() {
         result={multiResult}
         onBack={() => router.push('/viewer')}
         onPrint={() => window.print()}
+        onExcel={() => exportEstimateToExcel(multiResult)}
       />
     )
   }
