@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseDxfBends } from '@/lib/p4/dxf-bend-parser'
+import { computeBendSequence } from '@/lib/p4/bend-sequence'
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,10 +12,16 @@ export async function POST(request: NextRequest) {
     if (!file.name.toLowerCase().endsWith('.dxf'))
       return NextResponse.json({ error: '.dxf 파일만 지원합니다.' }, { status: 400 })
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const result = parseDxfBends(buffer)
+    const buffer   = Buffer.from(await file.arrayBuffer())
+    const parsed   = parseDxfBends(buffer)
+    const sequence = computeBendSequence(parsed)
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      bom:          parsed.bom,
+      bendGroups:   parsed.bendGroups,
+      bendSequence: sequence,
+      warnings:     parsed.warnings,
+    })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

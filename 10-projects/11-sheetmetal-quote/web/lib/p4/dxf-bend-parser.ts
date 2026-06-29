@@ -21,6 +21,13 @@ export interface BomRow {
   innerRadiusMm: number         // 안쪽 반경 (mm)
 }
 
+/** 외형선 단일 LINE 요소 (평판 경계 계산용) */
+export interface OutlineLine {
+  x1: number; y1: number
+  x2: number; y2: number
+  length: number
+}
+
 /** 절곡선 그룹 (collinear LINE 묶음) */
 export interface BendGroup {
   tag:           string | null  // BOM 태그. null = 미매칭
@@ -34,9 +41,10 @@ export interface BendGroup {
 }
 
 export interface DxfBendData {
-  bom:        BomRow[]
-  bendGroups: BendGroup[]
-  warnings:   string[]
+  bom:          BomRow[]
+  bendGroups:   BendGroup[]
+  outlineLines: OutlineLine[]  // 외형선 LINE들 (평판 경계 계산용)
+  warnings:     string[]
 }
 
 // ── 내부 헬퍼 ─────────────────────────────────────────────────────────
@@ -241,6 +249,46 @@ function matchBomToGroups(bom: BomRow[], rawGroups: Map<string, RawGroup>): Bend
   })
 }
 
+// ── 외형선 추출 ────────────────────────────────────────────────────────
+
+/**
+ * 외형선 레이어 LINE만 추출.
+ * 절곡선 중심(bendCx, bendCy) 기준으로 searchRadius 이내의 선만 반환해
+ * 도면 다른 뷰의 외형선이 섞이지 않도록 한다.
+ */
+function extractOutlineLines(
+  pairs: GCode[],
+  bendCx: number,
+  bendCy: number,
+  searchRadius: number,
+): OutlineLine[] {
+  const lines: OutlineLine[] = []
+  let curType = '', curLayer = ''
+  let props: Record<number, string> = {}
+
+  const flush = () => {
+    if (curType !== 'LINE' || curLayer !== '외형선') return
+    const x1 = parseFloat(props[10] ?? '0')
+    const y1 = parseFloat(props[20] ?? '0')
+    const x2 = parseFloat(props[11] ?? '0')
+    const y2 = parseFloat(props[21] ?? '0')
+    const length = Math.hypot(x2 - x1, y2 - y1)
+    if (length < 1) return
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
+    if (Math.hypot(mx - bendCx, my - bendCy) > searchRadius) return
+    lines.push({ x1, y1, x2, y2, length })
+  }
+
+  for (const [code, val] of pairs) {
+    if (code === 0) { flush(); curType = val; curLayer = ''; props = {} }
+    else if (code === 8) curLayer = val
+    else props[code] = val
+  }
+  flush()
+
+  return lines
+}
+
 // ── 메인 ─────────────────────────────────────────────────────────────
 
 export function parseDxfBends(buffer: Buffer): DxfBendData {
@@ -267,5 +315,10 @@ export function parseDxfBends(buffer: Buffer): DxfBendData {
     )
   }
 
-  return { bom, bendGroups, warnings }
+  // 4. 외형선 추출 (절곡선 중심 기준 1500mm 이내)
+  const bendCx = bendGroups.reduce((s, g) => s + g.midX, 0) / (bendGroups.length || 1)
+  const bendCy = bendGroups.reduce((s, g) => s + g.midY, 0) / (bendGroups.length || 1)
+  const outlineLines = extractOutlineLines(pairs, bendCx, bendCy, 1500)
+
+  return { bom, bendGroups, outlineLines, warnings }
 }

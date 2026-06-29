@@ -217,3 +217,26 @@ FORMAT 레이어의 사각형 칸이 부품 1개에 정확히 대응 → 셀 bbo
 - 실제 업체 단가표를 pricing_defaults.json에 반영
 - PDF 다운로드 기능 구현 (UI는 있으나 미구현)
 - 다른 도면 2~3개로 nameAnchor 2D 최근접 방식 일반화 검증
+
+---
+
+## 2026-06-30 P4 자동생성 3단계 완료
+
+P4 자동생성 3단계 완료 - bend-sequence.ts(펼침여유 계산+면배정+절곡순서), route.ts에 bendSequence 추가. 하부장 커버판-02로 검증: 8곡→4면 배정, 각 면 내측먼저 순서, 평판 1001.6x359.6 계산 확인. 타입체크 통과. 다음은 4단계 P4 텍스트 생성기(p4-generator.ts).
+
+### 완성된 P4 자동생성 단계
+| 단계 | 파일 | 내용 |
+|------|------|------|
+| 1단계 ✅ | `samples/P4/` | .P4 예제 21개 + PDF 매뉴얼 보관 |
+| 2단계 ✅ | `lib/p4/dxf-bend-parser.ts` | SW_TABLEANNOTATION_0 BOM 파싱 + 굽힘선 그룹 추출 + 위치 기반 매칭 |
+| 3단계 ✅ | `lib/p4/bend-sequence.ts` | 평판 bbox 계산 + L값 산출 + 4면 배정 + 절곡 순서 결정 |
+| 4단계 🔜 | `lib/p4/p4-generator.ts` | P4 텍스트 생성 (COD/DIM/REF/MCM/POS/ROT+BEN/END) |
+| 5단계 🔜 | UI 연결 | 결과 화면 "P4 생성" 버튼 + 미리보기 + 다운로드 |
+
+### 검증 결과 (하부장 커버판-02.DXF, 8곡)
+- BOM: A~H 8행 전부 추출 (방향=아래, 각도=90°, 반경=0.1mm)
+- 절곡선 그룹: 수평(H) 4개 940mm + 수직(V) 4개 298mm
+- 면 배정: top/left/right/bottom 각 2곡씩
+- 각 면 내측(L=30.6mm) → 외측(L=14.2mm) 순서
+- 전개도 치수: 1001.6mm × 359.6mm
+- API: `POST /api/p4-parse` → `{ bom, bendGroups, bendSequence }` 반환
