@@ -50,6 +50,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               >
                 단가 관리
               </a>
+              <a
+                href="/p4"
+                className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:bg-surface-container-high px-3 py-2 rounded transition-colors"
+              >
+                P4 생성
+              </a>
             </nav>
           </div>
         </header>
